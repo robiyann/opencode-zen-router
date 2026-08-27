@@ -1,4 +1,0 @@
-# List of Vercel Relay Proxies (one per line)
-# Add your deployed public Vercel proxies here:
-
-https://opencode-vercel-proxy-woad.vercel.app
