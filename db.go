@@ -1,0 +1,384 @@
+package main
+
+import (
+	"crypto/rand"
+	"database/sql"
+	"encoding/hex"
+	"fmt"
+	"log"
+
+	"golang.org/x/crypto/bcrypt"
+	_ "modernc.org/sqlite"
+)
+
+type DBProxy struct {
+	ID           int64  `json:"id"`
+	Name         string `json:"name"`
+	URL          string `json:"url"`
+	IsActive     bool   `json:"is_active"`
+	LatencyMs    int    `json:"latency_ms"`
+	LastStatus   int    `json:"last_status"`
+	SuccessCount int    `json:"success_count"`
+	ErrorCount   int    `json:"error_count"`
+	CreatedAt    string `json:"created_at"`
+}
+
+type APIKey struct {
+	ID            string `json:"id"`
+	Key           string `json:"key"`
+	MaskedKey     string `json:"masked_key"`
+	Name          string `json:"name"`
+	IsActive      bool   `json:"is_active"`
+	TotalRequests int    `json:"total_requests"`
+	TotalTokens   int    `json:"total_tokens"`
+	LastUsedAt    string `json:"last_used_at"`
+	CreatedAt     string `json:"created_at"`
+}
+
+type UsageLog struct {
+	ID               int64  `json:"id"`
+	Timestamp        string `json:"timestamp"`
+	Model            string `json:"model"`
+	ProxyURL         string `json:"proxy_url"`
+	Status           int    `json:"status"`
+	LatencyMs        int    `json:"latency_ms"`
+	PromptTokens     int    `json:"prompt_tokens"`
+	CompletionTokens int    `json:"completion_tokens"`
+	TotalTokens      int    `json:"total_tokens"`
+	IsStream         bool   `json:"is_stream"`
+}
+
+type GlobalStats struct {
+	TotalRequests int64 `json:"total_requests"`
+	TotalTokens   int64 `json:"total_tokens"`
+	PromptTokens  int64 `json:"prompt_tokens"`
+	OutputTokens  int64 `json:"output_tokens"`
+}
+
+type Database struct {
+	db *sql.DB
+}
+
+func InitDB(filepath string) (*Database, error) {
+	db, err := sql.Open("sqlite", filepath)
+	if err != nil {
+		return nil, err
+	}
+
+	db.Exec("PRAGMA journal_mode=WAL;")
+
+	createTableQuery := `
+	CREATE TABLE IF NOT EXISTS proxies (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		url TEXT NOT NULL UNIQUE,
+		is_active BOOLEAN NOT NULL DEFAULT 1,
+		latency_ms INTEGER DEFAULT 0,
+		last_status INTEGER DEFAULT 200,
+		success_count INTEGER DEFAULT 0,
+		error_count INTEGER DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS api_keys (
+		id TEXT PRIMARY KEY,
+		key TEXT UNIQUE NOT NULL,
+		name TEXT NOT NULL,
+		is_active BOOLEAN NOT NULL DEFAULT 1,
+		total_requests INTEGER DEFAULT 0,
+		total_tokens INTEGER DEFAULT 0,
+		last_used_at DATETIME,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS sessions (
+		token TEXT PRIMARY KEY,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS usage_logs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+		model TEXT NOT NULL,
+		proxy_url TEXT NOT NULL,
+		status INTEGER NOT NULL,
+		latency_ms INTEGER DEFAULT 0,
+		prompt_tokens INTEGER DEFAULT 0,
+		completion_tokens INTEGER DEFAULT 0,
+		total_tokens INTEGER DEFAULT 0,
+		is_stream BOOLEAN DEFAULT 0
+	);
+
+	CREATE TABLE IF NOT EXISTS settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);
+	`
+
+	if _, err := db.Exec(createTableQuery); err != nil {
+		log.Printf("[DB] Table init error: %v", err)
+	}
+
+	db.Exec("ALTER TABLE proxies ADD COLUMN success_count INTEGER DEFAULT 0;")
+	db.Exec("ALTER TABLE proxies ADD COLUMN error_count INTEGER DEFAULT 0;")
+
+	database := &Database{db: db}
+
+	// Initialize default settings
+	database.SetSetting("strategy", "round-robin")
+
+	// Set default hashed password (default: "admin123") if not exists
+	if database.GetSetting("admin_password_hash", "") == "" {
+		hashed, _ := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+		database.SetSetting("admin_password_hash", string(hashed))
+		log.Printf("[Auth] Default admin password set: admin123 (Change in settings)")
+	}
+
+	// Seed default proxy if empty
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM proxies").Scan(&count)
+	if count == 0 {
+		database.AddProxy("Primary Vercel Relay", "https://opencode-vercel-proxy-woad.vercel.app")
+	}
+
+	return database, nil
+}
+
+// ----------------------------------------------------
+// Proxy Management
+// ----------------------------------------------------
+func (d *Database) GetAllProxies() ([]DBProxy, error) {
+	rows, err := d.db.Query("SELECT id, name, url, is_active, latency_ms, last_status, success_count, error_count, datetime(created_at) FROM proxies ORDER BY id DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	list := make([]DBProxy, 0)
+	for rows.Next() {
+		var p DBProxy
+		if err := rows.Scan(&p.ID, &p.Name, &p.URL, &p.IsActive, &p.LatencyMs, &p.LastStatus, &p.SuccessCount, &p.ErrorCount, &p.CreatedAt); err == nil {
+			list = append(list, p)
+		}
+	}
+	return list, nil
+}
+
+func (d *Database) GetActiveProxies() ([]string, error) {
+	rows, err := d.db.Query("SELECT url FROM proxies WHERE is_active = 1")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	urls := make([]string, 0)
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err == nil {
+			urls = append(urls, u)
+		}
+	}
+	return urls, nil
+}
+
+func (d *Database) AddProxy(name, urlStr string) (int64, error) {
+	res, err := d.db.Exec("INSERT OR IGNORE INTO proxies (name, url, is_active) VALUES (?, ?, 1)", name, urlStr)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (d *Database) DeleteProxy(id int64) error {
+	_, err := d.db.Exec("DELETE FROM proxies WHERE id = ?", id)
+	return err
+}
+
+func (d *Database) ToggleProxy(id int64, isActive bool) error {
+	_, err := d.db.Exec("UPDATE proxies SET is_active = ? WHERE id = ?", isActive, id)
+	return err
+}
+
+func (d *Database) UpdateProxyStatus(urlStr string, status int, latencyMs int, isSuccess bool) error {
+	var query string
+	if isSuccess {
+		query = "UPDATE proxies SET last_status = ?, latency_ms = ?, success_count = success_count + 1 WHERE url = ?"
+	} else {
+		query = "UPDATE proxies SET last_status = ?, latency_ms = ?, error_count = error_count + 1 WHERE url = ?"
+	}
+	_, err := d.db.Exec(query, status, latencyMs, urlStr)
+	return err
+}
+
+// ----------------------------------------------------
+// API Key Management (Like 9router Ori)
+// ----------------------------------------------------
+func (d *Database) GetAPIKeys() ([]APIKey, error) {
+	rows, err := d.db.Query("SELECT id, key, name, is_active, total_requests, total_tokens, COALESCE(datetime(last_used_at), '-'), datetime(created_at) FROM api_keys ORDER BY created_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	list := make([]APIKey, 0)
+	for rows.Next() {
+		var k APIKey
+		if err := rows.Scan(&k.ID, &k.Key, &k.Name, &k.IsActive, &k.TotalRequests, &k.TotalTokens, &k.LastUsedAt, &k.CreatedAt); err == nil {
+			if len(k.Key) > 12 {
+				k.MaskedKey = k.Key[:7] + "..." + k.Key[len(k.Key)-4:]
+			} else {
+				k.MaskedKey = k.Key
+			}
+			list = append(list, k)
+		}
+	}
+	return list, nil
+}
+
+func (d *Database) CreateAPIKey(name string) (*APIKey, error) {
+	b := make([]byte, 16)
+	rand.Read(b)
+	id := fmt.Sprintf("key_%s", hex.EncodeToString(b[:6]))
+	rawKey := fmt.Sprintf("sk-zen-%s", hex.EncodeToString(b))
+
+	query := "INSERT INTO api_keys (id, key, name, is_active, total_requests, total_tokens) VALUES (?, ?, ?, 1, 0, 0)"
+	_, err := d.db.Exec(query, id, rawKey, name)
+	if err != nil {
+		return nil, err
+	}
+
+	return &APIKey{
+		ID:        id,
+		Key:       rawKey,
+		MaskedKey: rawKey[:7] + "..." + rawKey[len(rawKey)-4:],
+		Name:      name,
+		IsActive:  true,
+	}, nil
+}
+
+func (d *Database) DeleteAPIKey(id string) error {
+	_, err := d.db.Exec("DELETE FROM api_keys WHERE id = ?", id)
+	return err
+}
+
+func (d *Database) ToggleAPIKey(id string, isActive bool) error {
+	_, err := d.db.Exec("UPDATE api_keys SET is_active = ? WHERE id = ?", isActive, id)
+	return err
+}
+
+// ValidateAPIKey checks if key exists. If no keys are registered in DB yet, allows public/any.
+func (d *Database) ValidateAPIKey(keyStr string) (bool, *APIKey) {
+	var count int
+	d.db.QueryRow("SELECT COUNT(*) FROM api_keys").Scan(&count)
+	if count == 0 {
+		// If user hasn't generated any keys yet, allow public access
+		return true, nil
+	}
+
+	var k APIKey
+	var activeInt int
+	err := d.db.QueryRow("SELECT id, key, name, is_active FROM api_keys WHERE key = ?", keyStr).Scan(&k.ID, &k.Key, &k.Name, &activeInt)
+	if err != nil {
+		return false, nil
+	}
+
+	if activeInt != 1 {
+		return false, nil
+	}
+
+	k.IsActive = true
+	return true, &k
+}
+
+func (d *Database) RecordAPIKeyUsage(id string, tokens int) {
+	d.db.Exec("UPDATE api_keys SET total_requests = total_requests + 1, total_tokens = total_tokens + ?, last_used_at = CURRENT_TIMESTAMP WHERE id = ?", tokens, id)
+}
+
+// ----------------------------------------------------
+// Password & Session Auth (Bcrypt Hash Like 9router Ori)
+// ----------------------------------------------------
+func (d *Database) VerifyPassword(plainPassword string) bool {
+	hash := d.GetSetting("admin_password_hash", "")
+	if hash == "" {
+		return plainPassword == "admin123"
+	}
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(plainPassword))
+	return err == nil
+}
+
+func (d *Database) SetPassword(newPassword string) error {
+	hashed, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	return d.SetSetting("admin_password_hash", string(hashed))
+}
+
+func (d *Database) CreateSession() (string, error) {
+	b := make([]byte, 24)
+	rand.Read(b)
+	token := hex.EncodeToString(b)
+	_, err := d.db.Exec("INSERT INTO sessions (token) VALUES (?)", token)
+	return token, err
+}
+
+func (d *Database) ValidateSession(token string) bool {
+	if token == "" {
+		return false
+	}
+	var count int
+	d.db.QueryRow("SELECT COUNT(*) FROM sessions WHERE token = ?", token).Scan(&count)
+	return count > 0
+}
+
+func (d *Database) DeleteSession(token string) {
+	d.db.Exec("DELETE FROM sessions WHERE token = ?", token)
+}
+
+// ----------------------------------------------------
+// Usage Logs & Global Stats
+// ----------------------------------------------------
+func (d *Database) LogUsage(model, proxyURL string, status, latencyMs, promptTokens, completionTokens, totalTokens int, isStream bool) error {
+	query := `INSERT INTO usage_logs (model, proxy_url, status, latency_ms, prompt_tokens, completion_tokens, total_tokens, is_stream) 
+	          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	_, err := d.db.Exec(query, model, proxyURL, status, latencyMs, promptTokens, completionTokens, totalTokens, isStream)
+	return err
+}
+
+func (d *Database) GetRecentLogs(limit int) ([]UsageLog, error) {
+	rows, err := d.db.Query("SELECT id, datetime(timestamp), model, proxy_url, status, latency_ms, prompt_tokens, completion_tokens, total_tokens, is_stream FROM usage_logs ORDER BY id DESC LIMIT ?", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	logs := make([]UsageLog, 0)
+	for rows.Next() {
+		var l UsageLog
+		if err := rows.Scan(&l.ID, &l.Timestamp, &l.Model, &l.ProxyURL, &l.Status, &l.LatencyMs, &l.PromptTokens, &l.CompletionTokens, &l.TotalTokens, &l.IsStream); err == nil {
+			logs = append(logs, l)
+		}
+	}
+	return logs, nil
+}
+
+func (d *Database) GetGlobalStats() (GlobalStats, error) {
+	var s GlobalStats
+	row := d.db.QueryRow("SELECT COUNT(*), COALESCE(SUM(total_tokens), 0), COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0) FROM usage_logs")
+	row.Scan(&s.TotalRequests, &s.TotalTokens, &s.PromptTokens, &s.OutputTokens)
+	return s, nil
+}
+
+func (d *Database) GetSetting(key, defVal string) string {
+	var val string
+	err := d.db.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&val)
+	if err != nil || val == "" {
+		return defVal
+	}
+	return val
+}
+
+func (d *Database) SetSetting(key, val string) error {
+	_, err := d.db.Exec("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, val)
+	return err
+}

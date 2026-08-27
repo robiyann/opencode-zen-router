@@ -1,0 +1,17 @@
+# Binaries
+*.exe
+*.exe~
+opencode-router-linux
+opencode-router
+
+# SQLite DB & WAL files
+*.db
+*.db-shm
+*.db-wal
+router.db*
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

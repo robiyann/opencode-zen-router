@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenCode Zen — Ultra-Lightweight AI Gateway Command Center</title>
+  
+  <style>
+    /* ==========================================================================
+       ZEN ROUTER — ULTRA-LIGHTWEIGHT ZERO-DEPENDENCY STYLESHEET
+       Pure Vanilla CSS • Zero CDN Bloat • Instant 0ms Load • High-Density Dark UI
+       ========================================================================== */
+    :root {
+      --bg: #07090e;
+      --bg-alt: #0c101a;
+      --surface: #111726;
+      --surface-hover: #172034;
+      --surface-card: rgba(17, 23, 38, 0.85);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(255, 255, 255, 0.15);
+      --border-brand: rgba(59, 130, 246, 0.4);
+      --text: #f8fafc;
+      --text-dim: #94a3b8;
+      --text-muted: #64748b;
+      --brand: #3b82f6;
+      --brand-hover: #2563eb;
+      --brand-glow: rgba(59, 130, 246, 0.25);
+      --emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.2);
+      --amber: #f59e0b;
+      --amber-glow: rgba(245, 158, 11, 0.2);
+      --rose: #ef4444;
+      --rose-glow: rgba(239, 68, 68, 0.2);
+      --purple: #a855f7;
+      --cyan: #38bdf8;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", Helvetica, Arial, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }
+
+    /* Layout & Containers */
+    .app-container { max-width: 1600px; width: 100%; margin: 0 auto; padding: 16px 20px; flex: 1; display: flex; flex-direction: column; gap: 16px; }
+    
+    /* Header */
+    header {
+      background: rgba(12, 16, 26, 0.9);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 10px 20px;
+    }
+    .header-inner {
+      max-width: 1600px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit; }
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      box-shadow: 0 0 12px var(--brand-glow);
+    }
+    .brand-title { font-size: 15px; font-weight: 800; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px; }
+    .brand-tag { font-size: 9px; font-weight: 700; text-transform: uppercase; background: rgba(59, 130, 246, 0.15); color: #60a5fa; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(59, 130, 246, 0.3); }
+    .brand-subtitle { font-size: 11px; color: var(--text-muted); }
+
+    /* Live SSE Pill */
+    .sse-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(17, 23, 38, 0.8);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--emerald);
+      box-shadow: 0 0 8px var(--emerald);
+    }
+    .pulse-dot.reconnecting { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+
+    /* Header Controls */
+    .header-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    
+    /* Strategy Selector */
+    .strategy-group {
+      display: flex;
+      align-items: center;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .strat-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .strat-btn:hover { color: var(--text); }
+    .strat-btn.active {
+      background: var(--brand);
+      color: #fff;
+      box-shadow: 0 0 10px var(--brand-glow);
+    }
+
+    /* Cards & Glassmorphism */
+    .card {
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      position: relative;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+    .card:hover { border-color: var(--border-hover); }
+
+    /* Top Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .stat-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+    .stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; }
+    .stat-icon { color: var(--text-dim); width: 14px; height: 14px; }
+    .stat-value { font-size: 20px; font-weight: 800; font-family: var(--font-mono); color: var(--text); }
+    .stat-footer { font-size: 10px; color: var(--text-muted); margin-top: 4px; display: flex; justify-content: space-between; align-items: center; }
+
+    /* In-Flight Active Glow */
+    .inflight-card.active {
+      border-color: var(--amber);
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), var(--surface));
+      box-shadow: 0 0 15px var(--amber-glow);
+    }
+
+    /* Navigation Tabs */
+    .tabs-bar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-dim);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .tab-btn:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+    .tab-btn.active {
+      color: #fff;
+      background: rgba(59, 130, 246, 0.15);
+      border-color: rgba(59, 130, 246, 0.35);
+      box-shadow: 0 0 10px var(--brand-glow);
+    }
+    .tab-badge {
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.08);
+      font-family: var(--font-mono);
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Forms, Inputs & Buttons */
+    input, textarea, select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 2px var(--brand-glow);
+    }
+    input::placeholder, textarea::placeholder { color: var(--text-muted); }
+
+    .btn {
+      background: var(--brand);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+    .btn:hover { background: var(--brand-hover); }
+    .btn:active { transform: translateY(1px); }
+    .btn-secondary { background: var(--surface); color: var(--text-dim); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--surface-hover); color: var(--text); }
+    .btn-danger { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .btn-danger:hover { background: var(--rose); color: #fff; }
+    .btn-sm { padding: 4px 8px; font-size: 11px; }
+
+    /* Node Grid (Super Compact & Dense) */
+    .node-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 8px;
+    }
+    .node-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 11px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+    .node-card:hover { border-color: var(--border-brand); }
+    .node-card.cooldown { border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.04); }
+    .node-card.disabled { opacity: 0.5; }
+
+    .node-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .node-name { font-weight: 700; font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .node-url { font-family: var(--font-mono); font-size: 10px; color: var(--cyan); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    
+    .node-stats {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-size: 10px;
+      font-family: var(--font-mono);
+    }
+    .node-actions { display: flex; align-items: center; justify-content: space-between; padding-top: 4px; border-top: 1px solid rgba(255, 255, 255, 0.04); }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .badge-green { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-yellow { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .badge-red { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .badge-blue { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+
+    /* Tables */
+    .table-container { width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+    table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
+    th { padding: 8px 12px; background: var(--bg); color: var(--text-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; border-bottom: 1px solid var(--border); letter-spacing: 0.5px; }
+    td { padding: 9px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.04); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255, 255, 255, 0.02); }
+
+    /* Ultra-Lightweight Native Canvas Chart */
+    .chart-container {
+      width: 100%;
+      height: 140px;
+      position: relative;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    canvas { width: 100%; height: 100%; display: block; }
+
+    /* Toast Notification */
+    .toast-container { position: fixed; bottom: 16px; right: 16px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+    .toast {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: auto;
+      animation: toastIn 0.2s ease-out;
+      transition: all 0.2s;
+    }
+    .toast.success { border-color: rgba(16, 185, 129, 0.4); }
+    .toast.error { border-color: rgba(239, 68, 68, 0.4); }
+    @keyframes toastIn { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    /* Modals */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(7, 9, 14, 0.8);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 500;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .modal-title { font-size: 14px; font-weight: 700; color: var(--text); }
+  </style>
+</head>
+<body>
+
+  <!-- TOAST CONTAINER -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- AUTHENTICATION OVERLAY -->
+  <div id="login-overlay" class="modal-overlay">
+    <div class="modal" style="max-width: 360px; text-align: center;">
+      <div style="margin-bottom: 16px;">
+        <div class="brand-icon" style="margin: 0 auto 10px; width: 42px; height: 42px;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <h2 style="font-size: 16px; font-weight: 800;">Zen Router Gateway</h2>
+        <p style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Enter master password to unlock control room</p>
+      </div>
+
+      <form onsubmit="handleLogin(event)" style="display: flex; flex-direction: column; gap: 10px;">
+        <input type="password" id="login-password" placeholder="Password (default: admin123)" required style="width: 100%; padding: 9px;">
+        <button type="submit" class="btn" style="justify-content: center; width: 100%;">Unlock Dashboard</button>
+        <div id="login-error" style="color: var(--rose); font-size: 11px; min-height: 14px;"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CHANGE PASSWORD MODAL -->
+  <div id="password-modal" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Change Admin Password</h3>
+        <button class="btn btn-secondary btn-sm" onclick="closeModal('password-modal')">✕</button>
+      </div>
+      <form onsubmit="submitChangePassword(event)" style="display: flex; flex-direction: column; gap: 10px;">
+        <div>
+          <label style="font-size: 10px; color: var(--text-muted); display: block; margin-bottom: 3px;">CURRENT PASSWORD</label>
+          <input type="password" id="pw-current" required style="width: 100%;">
+        </div>
+        <div>
+          <label style="font-size: 10px; color: var(--text-muted); display: block; margin-bottom: 3px;">NEW PASSWORD</label>
+          <input type="password" id="pw-new" minlength="6" required style="width: 100%;">
+        </div>
+        <div>
+          <label style="font-size: 10px; color: var(--text-muted); display: block; margin-bottom: 3px;">CONFIRM PASSWORD</label>
+          <input type="password" id="pw-confirm" minlength="6" required style="width: 100%;">
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('password-modal')">Cancel</button>
+          <button type="submit" class="btn btn-sm">Update Password</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CONFIRM DELETE MODAL (Replaces browser confirm) -->
+  <div id="delete-modal" class="modal-overlay">
+    <div class="modal" style="max-width: 380px;">
+      <div class="modal-header">
+        <h3 class="modal-title" style="color: var(--rose);">Delete Relay Node</h3>
+        <button class="btn btn-secondary btn-sm" onclick="closeModal('delete-modal')">✕</button>
+      </div>
+      <p style="font-size: 12px; color: var(--text-dim); margin-bottom: 12px;">
+        Are you sure you want to remove <strong id="delete-node-name" style="color: var(--text);"></strong> from the rotation pool?
+      </p>
+      <div style="display: flex; justify-content: flex-end; gap: 6px;">
+        <button class="btn btn-secondary btn-sm" onclick="closeModal('delete-modal')">Cancel</button>
+        <button class="btn btn-danger btn-sm" id="btn-confirm-delete" onclick="confirmDeleteAction()">Yes, Delete Node</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NEW KEY GENERATED MODAL -->
+  <div id="key-modal" class="modal-overlay">
+    <div class="modal" style="max-width: 460px;">
+      <div class="modal-header">
+        <h3 class="modal-title">API Key Created</h3>
+        <button class="btn btn-secondary btn-sm" onclick="closeModal('key-modal')">✕</button>
+      </div>
+      <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Copy and store this secret key now. It won't be shown in full again.</p>
+      <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px;">
+        <code id="modal-key-val" style="font-family: var(--font-mono); color: var(--cyan); font-size: 11px; word-break: break-all;"></code>
+        <button class="btn btn-sm" onclick="copyText(document.getElementById('modal-key-val').innerText)">Copy</button>
+      </div>
+      <div style="display: flex; justify-content: flex-end;">
+        <button class="btn btn-secondary btn-sm" onclick="closeModal('key-modal')">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOP HEADER -->
+  <header>
+    <div class="header-inner">
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <a href="#" class="brand">
+          <div class="brand-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          </div>
+          <div>
+            <div class="brand-title">
+              ZEN ROUTER <span class="brand-tag">Pure Go</span>
+            </div>
+            <div class="brand-subtitle">AI Gateway & Relay Load Balancer</div>
+          </div>
+        </a>
+
+        <div class="sse-pill">
+          <span id="sse-dot" class="pulse-dot"></span>
+          <span id="sse-text">Live Stream</span>
+        </div>
+      </div>
+
+      <div class="header-controls">
+        <div class="strategy-group">
+          <span style="font-size: 9px; font-weight: 700; color: var(--text-muted); padding: 0 6px; text-transform: uppercase;">Strategy</span>
+          <button id="strat-rr" class="strat-btn active" onclick="setStrategy('round-robin')">Round-Robin</button>
+          <button id="strat-rand" class="strat-btn" onclick="setStrategy('random')">Random</button>
+          <button id="strat-sticky" class="strat-btn" onclick="setStrategy('sticky')">Sticky</button>
+        </div>
+
+        <button class="btn btn-secondary btn-sm" onclick="openModal('password-modal')">⚙️ Password</button>
+        <button class="btn btn-danger btn-sm" onclick="handleLogout()">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN APP WRAPPER -->
+  <div class="app-container">
+
+    <!-- TOP TELEMETRY 5-CARD STATS -->
+    <div class="stats-grid">
+      
+      <!-- In-Flight Active -->
+      <div class="stat-card" id="card-inflight">
+        <div class="stat-header">
+          <span class="stat-label">In-Flight</span>
+          <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <div class="stat-value" id="val-inflight">0</div>
+        <div class="stat-footer">
+          <span id="inflight-sub">Idle / Standby</span>
+          <span style="color: var(--amber); font-weight: bold;">⚡ CONCURRENCY</span>
+        </div>
+      </div>
+
+      <!-- Total Tokens -->
+      <div class="stat-card">
+        <div class="stat-header">
+          <span class="stat-label">Total Tokens</span>
+          <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+        </div>
+        <div class="stat-value" id="val-tokens">0</div>
+        <div class="stat-footer">
+          <span id="tokens-sub">0 Prompt / 0 Output</span>
+        </div>
+      </div>
+
+      <!-- Total Routed -->
+      <div class="stat-card">
+        <div class="stat-header">
+          <span class="stat-label">Requests Routed</span>
+          <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </div>
+        <div class="stat-value" id="val-routed">0</div>
+        <div class="stat-footer">
+          <span>Failover retries:</span>
+          <span id="val-retries" style="color: var(--amber); font-family: var(--font-mono);">0</span>
+        </div>
+      </div>
+
+      <!-- Active Relays -->
+      <div class="stat-card">
+        <div class="stat-header">
+          <span class="stat-label">Relay Fleet</span>
+          <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        </div>
+        <div class="stat-value" id="val-proxies">0</div>
+        <div class="stat-footer">
+          <span id="val-cooldown-count" style="color: var(--emerald);">0 in cooldown</span>
+        </div>
+      </div>
+
+      <!-- API Keys -->
+      <div class="stat-card">
+        <div class="stat-header">
+          <span class="stat-label">API Keys</span>
+          <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        </div>
+        <div class="stat-value" id="val-keys">0</div>
+        <div class="stat-footer">
+          <span>Uptime:</span>
+          <span id="val-uptime" style="font-family: var(--font-mono);">0s</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TABS BAR -->
+    <div class="tabs-bar">
+      <button class="tab-btn active" onclick="switchTab('tab-nodes')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+        <span>Relay Topology</span>
+        <span class="tab-badge" id="badge-nodes">0</span>
+      </button>
+
+      <button class="tab-btn" onclick="switchTab('tab-keys')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        <span>API Keys</span>
+        <span class="tab-badge" id="badge-keys">0</span>
+      </button>
+
+      <button class="tab-btn" onclick="switchTab('tab-telemetry')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <span>Live Telemetry & Logs</span>
+      </button>
+
+      <button class="tab-btn" onclick="switchTab('tab-add')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <span>Add & Import</span>
+      </button>
+
+      <button class="tab-btn" onclick="switchTab('tab-deploy')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>
+        <span>Vercel Deployer</span>
+      </button>
+
+      <button class="tab-btn" onclick="switchTab('tab-docs')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        <span>Client Integration</span>
+      </button>
+    </div>
+
+    <!-- ==================== TAB 1: RELAY TOPOLOGY ==================== -->
+    <div id="tab-nodes" class="tab-panel active">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 240px;">
+          <input type="text" id="node-search" placeholder="Search relay nodes..." oninput="renderNodes()" style="flex: 1;">
+          <select id="node-filter" onchange="renderNodes()">
+            <option value="all">All</option>
+            <option value="active">Ready Only</option>
+            <option value="cooldown">Cooldown</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <button class="btn btn-sm" id="btn-ping-all" onclick="pingAllNodes()">⚡ Benchmark All</button>
+          <button class="btn btn-secondary btn-sm" onclick="loadProxies()">🔄 Refresh</button>
+        </div>
+      </div>
+
+      <div id="node-grid" class="node-grid"></div>
+    </div>
+
+    <!-- ==================== TAB 2: API KEYS ==================== -->
+    <div id="tab-keys" class="tab-panel">
+      <!-- Create Key Form -->
+      <div class="card" style="margin-bottom: 12px;">
+        <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">Generate New API Key</div>
+        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Bearer token format: <code style="color: var(--cyan); font-family: var(--font-mono);">sk-zen-...</code> for OpenAI SDK clients.</p>
+        
+        <div style="display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap;">
+          <span style="font-size: 10px; color: var(--text-muted); font-weight: 700;">PRESETS:</span>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="setKeyNamePreset('Cursor IDE')">Cursor IDE</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="setKeyNamePreset('Cline VSCode')">Cline VSCode</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="setKeyNamePreset('Roo Code')">Roo Code</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="setKeyNamePreset('Python SDK')">Python SDK</button>
+        </div>
+
+        <form onsubmit="createAPIKey(event)" style="display: flex; gap: 8px;">
+          <input type="text" id="new-key-name" placeholder="Client Name (e.g. Cursor Laptop)" required style="flex: 1;">
+          <button type="submit" class="btn btn-sm">✨ Generate Key</button>
+        </form>
+      </div>
+
+      <!-- Keys Table -->
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Client / Name</th>
+              <th>Secret Key</th>
+              <th>Status</th>
+              <th style="text-align: right;">Requests</th>
+              <th style="text-align: right;">Total Tokens</th>
+              <th>Last Active</th>
+              <th style="text-align: center;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="keys-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 3: LIVE TELEMETRY & LOGS ==================== -->
+    <div id="tab-telemetry" class="tab-panel">
+      <!-- Native Lightweight Canvas Sparkline Chart -->
+      <div class="card" style="margin-bottom: 12px; padding: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div>
+            <div style="font-weight: 700; font-size: 12px;">Real-Time Latency & Token Sparkline</div>
+            <div style="font-size: 10px; color: var(--text-muted);">Cyan: Latency (ms) • Purple: Tokens</div>
+          </div>
+          <div style="font-size: 10px; color: var(--emerald); font-weight: bold;">● 60 FPS Canvas Plotter</div>
+        </div>
+        <div class="chart-container">
+          <canvas id="telemetryCanvas"></canvas>
+        </div>
+      </div>
+
+      <!-- Request Ingress Logs Table -->
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Model</th>
+              <th>Relay Node</th>
+              <th>Status</th>
+              <th style="text-align: right;">Latency</th>
+              <th style="text-align: right;">Tokens</th>
+              <th style="text-align: center;">Mode</th>
+            </tr>
+          </thead>
+          <tbody id="logs-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 4: ADD & IMPORT ==================== -->
+    <div id="tab-add" class="tab-panel">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+        
+        <!-- Add Single -->
+        <div class="card">
+          <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">Add Single Relay Node</div>
+          <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Attach one Vercel edge URL to the active pool.</p>
+          <form onsubmit="addSingleProxy(event)" style="display: flex; flex-direction: column; gap: 8px;">
+            <input type="text" id="proxy-name" placeholder="Relay Name (e.g. Node SG-1)" required>
+            <input type="url" id="proxy-url" placeholder="https://xyz.vercel.app" required>
+            <button type="submit" class="btn btn-sm">Add Node</button>
+          </form>
+        </div>
+
+        <!-- Bulk Import -->
+        <div class="card">
+          <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">Bulk Import Relays</div>
+          <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Paste multiple URLs (one per line).</p>
+          <textarea id="bulk-urls" rows="4" placeholder="https://relay-1.vercel.app&#10;https://relay-2.vercel.app" style="width: 100%; margin-bottom: 8px; font-family: var(--font-mono); font-size: 11px;"></textarea>
+          <button type="button" class="btn btn-sm" id="btn-bulk-import" onclick="addBulkProxies()">Batch Import to SQLite</button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ==================== TAB 5: VERCEL DEPLOYER ==================== -->
+    <div id="tab-deploy" class="tab-panel">
+      <div class="card">
+        <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px;">One-Click Vercel Edge Deployer</div>
+        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Automatically provision a serverless relay node on your Vercel account and register it into SQLite.</p>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 12px;">
+          <div>
+            <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 3px;">VERCEL API TOKEN</label>
+            <input type="password" id="vercel-token" placeholder="vcp_..." style="width: 100%; font-family: var(--font-mono);">
+          </div>
+          <div>
+            <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 3px;">PROJECT PREFIX</label>
+            <input type="text" id="deploy-prefix" value="zen-relay" style="width: 100%;">
+          </div>
+        </div>
+
+        <button class="btn btn-sm" id="btn-deploy-vercel" onclick="deployVercel()">🚀 Deploy Edge Worker</button>
+
+        <div id="deploy-terminal" style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-top: 12px; font-family: var(--font-mono); font-size: 11px; min-height: 100px; color: var(--text-dim);">
+          Waiting for deployment trigger...
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 6: CLIENT INTEGRATION ==================== -->
+    <div id="tab-docs" class="tab-panel">
+      <div class="card">
+        <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px;">Client & IDE Setup Guide</div>
+        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Point your AI coding tools to this local/VPS gateway instance.</p>
+
+        <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-family: var(--font-mono); font-size: 11px; margin-bottom: 12px;">
+          <div style="margin-bottom: 4px;"><span style="color: var(--text-muted);">Base URL:</span> <strong style="color: var(--cyan);">http://127.0.0.1:8080/v1</strong></div>
+          <div style="margin-bottom: 4px;"><span style="color: var(--text-muted);">Model:</span> <strong style="color: var(--emerald);">nemotron-3-ultra-free</strong></div>
+          <div><span style="color: var(--text-muted);">API Key:</span> [Use your generated sk-zen-... key]</div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <span style="font-size: 10px; font-weight: 700; color: var(--text-muted);">CURL TEST COMMAND</span>
+          <button class="btn btn-secondary btn-sm" onclick="copyText(document.getElementById('curl-code').innerText)">Copy cURL</button>
+        </div>
+        <pre id="curl-code" style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-family: var(--font-mono); font-size: 11px; overflow-x: auto; color: var(--text-dim);">curl -X POST http://127.0.0.1:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-zen-YOUR-KEY" \
+  -d '{"model":"nemotron-3-ultra-free","messages":[{"role":"user","content":"Hello!"}],"stream":true}'</pre>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ==========================================================================
+       PURE VANILLA JAVASCRIPT CONTROLLER (ZERO EXTERNAL LIBRARIES)
+       ========================================================================== -->
+  <script>
+    let activeStrategy = 'round-robin';
+    let currentEvtSource = null;
+    let reconnectTimer = null;
+    let cachedProxies = [];
+    let cachedKeys = [];
+    let cachedLogs = [];
+
+    // Telemetry Buffer for Native Canvas Plotter
+    const chartData = {
+      latencies: [],
+      tokens: []
+    };
+
+    // ----------------------------------------------------
+    // Toast Notification System (Zero DOM lag)
+    // ----------------------------------------------------
+    function showToast(msg, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.innerHTML = `<span>${type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ'}</span> <span>${escapeHtml(msg)}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(8px)';
+        setTimeout(() => toast.remove(), 200);
+      }, 3000);
+    }
+
+    function copyText(text) {
+      navigator.clipboard.writeText(text);
+      showToast('Copied to clipboard!', 'success');
+    }
+
+    function openModal(id) { document.getElementById(id).classList.add('open'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+    // ----------------------------------------------------
+    // Tabs Navigation
+    // ----------------------------------------------------
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      
+      const btn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick')?.includes(tabId));
+      if (btn) btn.classList.add('active');
+
+      const panel = document.getElementById(tabId);
+      if (panel) panel.classList.add('active');
+
+      if (tabId === 'tab-telemetry') renderCanvasChart();
+    }
+
+    // ----------------------------------------------------
+    // API Fetcher & Auth Checking
+    // ----------------------------------------------------
+    async function apiFetch(url, options = {}) {
+      options.credentials = 'include';
+      try {
+        const res = await fetch(url, options);
+        if (res.status === 401 && !url.includes('/api/auth/login')) {
+          openModal('login-overlay');
+        }
+        return res;
+      } catch (err) {
+        throw err;
+      }
+    }
+
+    async function checkAuth() {
+      try {
+        const res = await apiFetch('/api/auth/me');
+        const data = await res.json();
+        if (!data.authenticated) {
+          openModal('login-overlay');
+        } else {
+          closeModal('login-overlay');
+        }
+      } catch (e) {}
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const password = document.getElementById('login-password').value;
+      const errDiv = document.getElementById('login-error');
+      errDiv.innerText = '';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          closeModal('login-overlay');
+          document.getElementById('login-password').value = '';
+          showToast('Gateway unlocked!', 'success');
+          loadStats();
+          loadProxies();
+          loadAPIKeys();
+          loadLogs();
+        } else {
+          errDiv.innerText = data.error || 'Incorrect password';
+        }
+      } catch (err) {
+        errDiv.innerText = 'Server unreachable';
+      }
+    }
+
+    async function handleLogout() {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      location.reload();
+    }
+
+    async function submitChangePassword(e) {
+      e.preventDefault();
+      const curr = document.getElementById('pw-current').value;
+      const newP = document.getElementById('pw-new').value;
+      const confirmP = document.getElementById('pw-confirm').value;
+
+      if (newP !== confirmP) {
+        showToast('Passwords do not match', 'error');
+        return;
+      }
+
+      try {
+        const res = await apiFetch('/api/auth/password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ current_password: curr, new_password: newP })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showToast('Password updated!', 'success');
+          closeModal('password-modal');
+        } else {
+          showToast(data.error || 'Failed to update', 'error');
+        }
+      } catch (err) {
+        showToast('Network error', 'error');
+      }
+    }
+
+    // ----------------------------------------------------
+    // API Keys Management
+    // ----------------------------------------------------
+    function setKeyNamePreset(name) {
+      document.getElementById('new-key-name').value = name;
+    }
+
+    async function loadAPIKeys() {
+      try {
+        const res = await apiFetch('/api/keys');
+        const keys = await res.json();
+        cachedKeys = keys || [];
+        const active = cachedKeys.filter(k => k.is_active).length;
+        document.getElementById('val-keys').innerText = active;
+        document.getElementById('badge-keys').innerText = active;
+
+        const tbody = document.getElementById('keys-table-body');
+        if (!cachedKeys.length) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 20px;">No API Keys registered.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = cachedKeys.map(k => `
+          <tr>
+            <td><strong>${escapeHtml(k.name)}</strong></td>
+            <td>
+              <code style="color: var(--cyan); font-family: var(--font-mono); font-size: 11px;">${escapeHtml(k.masked_key)}</code>
+              <button class="btn btn-secondary btn-sm" style="margin-left: 4px; padding: 2px 6px;" onclick="copyText('${k.key}')">Copy</button>
+            </td>
+            <td><span class="badge ${k.is_active ? 'badge-green' : 'badge-red'}">${k.is_active ? 'Active' : 'Disabled'}</span></td>
+            <td style="text-align: right; font-family: var(--font-mono);">${(k.total_requests || 0).toLocaleString()}</td>
+            <td style="text-align: right; font-family: var(--font-mono); font-weight: bold; color: var(--purple);">${(k.total_tokens || 0).toLocaleString()}</td>
+            <td style="font-family: var(--font-mono); color: var(--text-muted); font-size: 11px;">${escapeHtml(k.last_used_at)}</td>
+            <td style="text-align: center;">
+              <button class="btn btn-secondary btn-sm" onclick="toggleKey('${k.id}', ${!k.is_active})">${k.is_active ? 'Disable' : 'Enable'}</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteKey('${k.id}')">Del</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (e) {}
+    }
+
+    async function createAPIKey(e) {
+      e.preventDefault();
+      const name = document.getElementById('new-key-name').value.trim();
+      if (!name) return;
+
+      try {
+        const res = await apiFetch('/api/keys', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        const key = await res.json();
+        document.getElementById('new-key-name').value = '';
+        loadAPIKeys();
+
+        document.getElementById('modal-key-val').innerText = key.key;
+        openModal('key-modal');
+      } catch (err) {
+        showToast('Failed to create key', 'error');
+      }
+    }
+
+    async function toggleKey(id, newStatus) {
+      await apiFetch('/api/keys/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, is_active: newStatus })
+      });
+      loadAPIKeys();
+    }
+
+    async function deleteKey(id) {
+      if (!confirm('Delete this API Key? Client requests will immediately fail.')) return;
+      await apiFetch(`/api/keys?id=${id}`, { method: 'DELETE' });
+      showToast('Key deleted', 'warning');
+      loadAPIKeys();
+    }
+
+    // ----------------------------------------------------
+    // Relay Node Fleet Management
+    // ----------------------------------------------------
+    async function loadProxies() {
+      try {
+        const res = await apiFetch('/api/proxies');
+        const list = await res.json();
+        cachedProxies = list || [];
+        renderNodes();
+      } catch (e) {}
+    }
+
+    function renderNodes() {
+      const grid = document.getElementById('node-grid');
+      const search = (document.getElementById('node-search')?.value || '').toLowerCase();
+      const filter = document.getElementById('node-filter')?.value || 'all';
+
+      const filtered = cachedProxies.filter(p => {
+        const match = p.name.toLowerCase().includes(search) || p.url.toLowerCase().includes(search);
+        if (!match) return false;
+        if (filter === 'active') return p.is_active && (p.cooldown_seconds || 0) === 0;
+        if (filter === 'cooldown') return (p.cooldown_seconds || 0) > 0;
+        if (filter === 'disabled') return !p.is_active;
+        return true;
+      });
+
+      const activeCount = cachedProxies.filter(p => p.is_active).length;
+      const cooldownCount = cachedProxies.filter(p => (p.cooldown_seconds || 0) > 0).length;
+
+      document.getElementById('val-proxies').innerText = activeCount;
+      document.getElementById('badge-nodes').innerText = activeCount;
+      document.getElementById('val-cooldown-count').innerText = `${cooldownCount} in cooldown`;
+
+      if (!filtered.length) {
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 30px;">No relay nodes match your search.</div>';
+        return;
+      }
+
+      grid.innerHTML = filtered.map(p => {
+        let statusBadge = '<span class="badge badge-green">Ready</span>';
+        let cardClass = 'node-card';
+
+        if (!p.is_active) {
+          statusBadge = '<span class="badge badge-red">Off</span>';
+          cardClass += ' disabled';
+        } else if ((p.cooldown_seconds || 0) > 0) {
+          statusBadge = `<span class="badge badge-yellow">${p.cooldown_seconds}s</span>`;
+          cardClass += ' cooldown';
+        }
+
+        const domain = p.url.replace(/^https?:\/\//, '');
+
+        return `
+          <div class="${cardClass}" id="node-card-${p.id}">
+            <div>
+              <div class="node-top">
+                <span class="node-name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>
+                ${statusBadge}
+              </div>
+              <div class="node-url" title="${escapeHtml(p.url)}">${escapeHtml(domain)}</div>
+              
+              <div class="node-stats">
+                <span>MS: <strong id="node-lat-${p.id}" style="color: ${p.latency_ms > 0 ? (p.latency_ms < 300 ? 'var(--emerald)' : 'var(--amber)') : 'var(--text-muted)'}">${p.latency_ms > 0 ? p.latency_ms : '-'}</strong></span>
+                <span><span style="color: var(--emerald);">✓${p.success_count || 0}</span> <span style="color: var(--rose);">✕${p.error_count || 0}</span></span>
+              </div>
+            </div>
+
+            <div class="node-actions">
+              <button class="btn btn-secondary btn-sm" id="ping-btn-${p.id}" onclick="pingNode('${escapeHtml(p.url)}', ${p.id})">Ping</button>
+              <div style="display: flex; gap: 4px;">
+                <button class="btn btn-secondary btn-sm" onclick="toggleProxy(${p.id}, ${!p.is_active})">${p.is_active ? 'Disable' : 'Enable'}</button>
+                <button class="btn btn-danger btn-sm" title="Delete relay" onclick="promptDeleteProxy(${p.id}, '${escapeHtml(p.name)}')">Delete</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function pingNode(url, id) {
+      const btn = document.getElementById(`ping-btn-${id}`);
+      const latEl = document.getElementById(`node-lat-${id}`);
+      if (btn) btn.innerText = '...';
+
+      const t0 = Date.now();
+      try {
+        await fetch(`${url}/health`, { signal: AbortSignal.timeout(6000) });
+        const latency = Date.now() - t0;
+        if (btn) btn.innerText = `${latency}ms`;
+        if (latEl) {
+          latEl.innerText = latency;
+          latEl.style.color = latency < 300 ? 'var(--emerald)' : 'var(--amber)';
+        }
+      } catch (e) {
+        if (btn) btn.innerText = 'Err';
+        if (latEl) { latEl.innerText = 'Err'; latEl.style.color = 'var(--rose)'; }
+      }
+    }
+
+    async function pingAllNodes() {
+      const btn = document.getElementById('btn-ping-all');
+      btn.disabled = true;
+      btn.innerText = '⏳ Benchmarking...';
+
+      const promises = cachedProxies.map(p => pingNode(p.url, p.id));
+      await Promise.allSettled(promises);
+
+      btn.disabled = false;
+      btn.innerText = '⚡ Benchmark All';
+      showToast('Completed benchmark test across all relays!', 'success');
+    }
+
+    async function addSingleProxy(e) {
+      e.preventDefault();
+      const name = document.getElementById('proxy-name').value.trim();
+      const url = document.getElementById('proxy-url').value.trim();
+      if (!url) return;
+
+      try {
+        await apiFetch('/api/proxies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, url })
+        });
+        document.getElementById('proxy-name').value = '';
+        document.getElementById('proxy-url').value = '';
+        showToast('Relay added!', 'success');
+        loadProxies();
+        loadStats();
+      } catch (err) {
+        showToast('Failed to add relay', 'error');
+      }
+    }
+
+    async function addBulkProxies() {
+      const text = document.getElementById('bulk-urls').value.trim();
+      if (!text) return;
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l && l.startsWith('http'));
+      if (!lines.length) return;
+
+      const btn = document.getElementById('btn-bulk-import');
+      btn.disabled = true;
+      btn.innerText = 'Importing...';
+
+      for (let i = 0; i < lines.length; i++) {
+        await apiFetch('/api/proxies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: `Vercel Relay ${i + 1}`, url: lines[i] })
+        });
+      }
+
+      document.getElementById('bulk-urls').value = '';
+      btn.disabled = false;
+      btn.innerText = 'Batch Import to SQLite';
+      showToast(`Imported ${lines.length} relays!`, 'success');
+      loadProxies();
+      loadStats();
+    }
+
+    async function toggleProxy(id, newStatus) {
+      await apiFetch('/api/proxies/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, is_active: newStatus })
+      });
+      loadProxies();
+    }
+
+    let pendingDeleteId = null;
+
+    function promptDeleteProxy(id, name) {
+      pendingDeleteId = id;
+      document.getElementById('delete-node-name').innerText = name || `Node #${id}`;
+      openModal('delete-modal');
+    }
+
+    async function confirmDeleteAction() {
+      if (!pendingDeleteId) return;
+      const id = pendingDeleteId;
+      closeModal('delete-modal');
+
+      // Optimistic UI Removal
+      const card = document.getElementById(`node-card-${id}`);
+      if (card) {
+        card.style.opacity = '0.3';
+        card.style.pointerEvents = 'none';
+      }
+
+      try {
+        const res = await apiFetch(`/api/proxies?id=${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Relay node deleted successfully!', 'success');
+          cachedProxies = cachedProxies.filter(p => p.id !== id);
+          renderNodes();
+          loadStats();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.error || 'Failed to delete relay', 'error');
+          if (card) { card.style.opacity = '1'; card.style.pointerEvents = 'auto'; }
+        }
+      } catch (err) {
+        showToast('Network error deleting relay', 'error');
+        if (card) { card.style.opacity = '1'; card.style.pointerEvents = 'auto'; }
+      } finally {
+        pendingDeleteId = null;
+      }
+    }
+
+    // ----------------------------------------------------
+    // Routing Strategy & Global Stats
+    // ----------------------------------------------------
+    async function setStrategy(strat) {
+      await apiFetch('/api/strategy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy: strat })
+      });
+      updateStrategyUI(strat);
+      showToast(`Strategy: ${strat.toUpperCase()}`, 'info');
+    }
+
+    function updateStrategyUI(strat) {
+      activeStrategy = strat;
+      document.getElementById('strat-rr').classList.toggle('active', strat === 'round-robin');
+      document.getElementById('strat-rand').classList.toggle('active', strat === 'random');
+      document.getElementById('strat-sticky').classList.toggle('active', strat === 'sticky');
+    }
+
+    async function loadStats() {
+      try {
+        const res = await apiFetch('/health');
+        const d = await res.json();
+
+        document.getElementById('val-routed').innerText = (d.total_routed || 0).toLocaleString();
+        document.getElementById('val-retries').innerText = d.total_retries || 0;
+        document.getElementById('val-tokens').innerText = (d.total_tokens || 0).toLocaleString();
+        document.getElementById('tokens-sub').innerText = `${(d.prompt_tokens || 0).toLocaleString()}p / ${(d.completion_tokens || 0).toLocaleString()}o`;
+
+        const uptime = d.uptime_seconds || 0;
+        const hrs = Math.floor(uptime / 3600);
+        const mins = Math.floor((uptime % 3600) / 60);
+        const secs = uptime % 60;
+        document.getElementById('val-uptime').innerText = `${hrs}h ${mins}m ${secs}s`;
+
+        updateStrategyUI(d.strategy || 'round-robin');
+      } catch (e) {}
+    }
+
+    // ----------------------------------------------------
+    // Native Lightweight Canvas Sparkline Chart (0KB Overhead)
+    // ----------------------------------------------------
+    function renderCanvasChart() {
+      const canvas = document.getElementById('telemetryCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.parentElement.clientWidth;
+      const h = canvas.parentElement.clientHeight;
+      
+      canvas.width = w * window.devicePixelRatio;
+      canvas.height = h * window.devicePixelRatio;
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Grid Lines
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.lineWidth = 1;
+      for (let y = 20; y < h; y += 30) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+
+      if (!chartData.latencies.length) return;
+
+      const maxLatency = Math.max(100, ...chartData.latencies);
+      const maxTokens = Math.max(100, ...chartData.tokens);
+      const len = chartData.latencies.length;
+      const step = w / Math.max(len - 1, 1);
+
+      // 1. Draw Latency Line (Cyan)
+      ctx.beginPath();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      chartData.latencies.forEach((lat, i) => {
+        const x = i * step;
+        const y = h - (lat / maxLatency) * (h - 20) - 10;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      // 2. Draw Tokens Line (Purple)
+      ctx.beginPath();
+      ctx.strokeStyle = '#a855f7';
+      ctx.lineWidth = 2;
+      chartData.tokens.forEach((tok, i) => {
+        const x = i * step;
+        const y = h - (tok / maxTokens) * (h - 20) - 10;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+
+    // ----------------------------------------------------
+    // Logs Viewer
+    // ----------------------------------------------------
+    async function loadLogs() {
+      try {
+        const res = await apiFetch('/api/logs?limit=25');
+        const logs = await res.json();
+        cachedLogs = logs || [];
+
+        // Update chart history
+        chartData.latencies = cachedLogs.map(l => l.latency_ms).reverse();
+        chartData.tokens = cachedLogs.map(l => l.total_tokens).reverse();
+        renderCanvasChart();
+
+        const tbody = document.getElementById('logs-table-body');
+        if (!cachedLogs.length) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 20px;">No request logs recorded yet.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = cachedLogs.map(l => `
+          <tr>
+            <td style="font-family: var(--font-mono); color: var(--text-muted); font-size: 11px;">${l.timestamp.split(' ')[1] || l.timestamp}</td>
+            <td><strong>${escapeHtml(l.model)}</strong></td>
+            <td><code style="color: var(--cyan); font-family: var(--font-mono); font-size: 11px;">${escapeHtml(l.proxy_url.replace(/^https?:\/\//, ''))}</code></td>
+            <td><span class="badge ${l.status === 200 ? 'badge-green' : 'badge-red'}">${l.status}</span></td>
+            <td style="text-align: right; font-family: var(--font-mono); color: ${l.latency_ms < 300 ? 'var(--emerald)' : 'var(--amber)'}; font-weight: bold;">${l.latency_ms}ms</td>
+            <td style="text-align: right; font-family: var(--font-mono); font-weight: bold; color: var(--purple);">${(l.total_tokens || 0).toLocaleString()}</td>
+            <td style="text-align: center;"><span class="badge ${l.is_stream ? 'badge-yellow' : 'badge-blue'}">${l.is_stream ? 'SSE' : 'JSON'}</span></td>
+          </tr>
+        `).join('');
+      } catch (e) {}
+    }
+
+    // ----------------------------------------------------
+    // Real-Time Server-Sent Events (SSE)
+    // ----------------------------------------------------
+    function connectLiveEvents() {
+      if (currentEvtSource) { currentEvtSource.close(); currentEvtSource = null; }
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+
+      try {
+        currentEvtSource = new EventSource('/api/events');
+        currentEvtSource.onopen = () => {
+          document.getElementById('sse-text').innerText = 'Live Stream';
+          document.getElementById('sse-dot').className = 'pulse-dot';
+        };
+
+        currentEvtSource.onmessage = (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            handleIncomingEvent(payload);
+          } catch (err) {}
+        };
+
+        currentEvtSource.onerror = () => {
+          document.getElementById('sse-text').innerText = 'Reconnecting...';
+          document.getElementById('sse-dot').className = 'pulse-dot reconnecting';
+          if (currentEvtSource) { currentEvtSource.close(); currentEvtSource = null; }
+          reconnectTimer = setTimeout(connectLiveEvents, 4000);
+        };
+      } catch (e) {}
+    }
+
+    function handleIncomingEvent(msg) {
+      if (msg.event === 'request_start') {
+        const inf = msg.data.in_flight || 0;
+        updateInFlight(inf);
+      } else if (msg.event === 'request_done') {
+        const inf = msg.data.in_flight || 0;
+        updateInFlight(inf);
+
+        if (msg.data.latency_ms) {
+          chartData.latencies.push(msg.data.latency_ms);
+          chartData.tokens.push(msg.data.total_tokens || 0);
+          if (chartData.latencies.length > 25) {
+            chartData.latencies.shift();
+            chartData.tokens.shift();
+          }
+          renderCanvasChart();
+        }
+
+        loadStats();
+        loadLogs();
+        loadProxies();
+      } else if (msg.event === 'proxy_cooldown') {
+        loadProxies();
+      } else if (msg.event === 'strategy_changed') {
+        updateStrategyUI(msg.data.strategy);
+      } else if (msg.event === 'proxy_added' || msg.event === 'proxy_deleted' || msg.event === 'proxy_toggled') {
+        loadProxies();
+      }
+    }
+
+    function updateInFlight(inf) {
+      const card = document.getElementById('card-inflight');
+      const val = document.getElementById('val-inflight');
+      const sub = document.getElementById('inflight-sub');
+
+      val.innerText = inf;
+      if (inf > 0) {
+        card.classList.add('active');
+        sub.innerText = `${inf} Active Processing...`;
+        sub.style.color = 'var(--amber)';
+      } else {
+        card.classList.remove('active');
+        sub.innerText = 'Idle / Standby';
+        sub.style.color = 'var(--text-muted)';
+      }
+    }
+
+    // ----------------------------------------------------
+    // One-Click Vercel Deployer
+    // ----------------------------------------------------
+    async function deployVercel() {
+      const token = document.getElementById('vercel-token').value.trim();
+      const prefix = document.getElementById('deploy-prefix').value.trim() || 'zen-relay';
+      const term = document.getElementById('deploy-terminal');
+      const btn = document.getElementById('btn-deploy-vercel');
+
+      if (!token) {
+        showToast('Please enter your Vercel Token', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerText = 'Deploying Edge Function...';
+      term.innerHTML = `<div style="color: var(--cyan);">> Deploying to Vercel API with prefix: ${escapeHtml(prefix)}...</div>`;
+
+      try {
+        const res = await apiFetch('/api/deploy-vercel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, prefix })
+        });
+        const d = await res.json();
+        if (res.ok) {
+          term.innerHTML += `<div style="color: var(--emerald); font-weight: bold;">> [SUCCESS] Deployed URL: ${d.url}</div><div>> Registered into SQLite active rotation pool.</div>`;
+          showToast('Vercel Edge Relay deployed!', 'success');
+          loadProxies();
+          loadStats();
+        } else {
+          term.innerHTML += `<div style="color: var(--rose);">> [FAILED] ${escapeHtml(d.error || 'Unknown error')}</div>`;
+          showToast(d.error || 'Deployment failed', 'error');
+        }
+      } catch (e) {
+        term.innerHTML += `<div style="color: var(--rose);">> [ERROR] ${escapeHtml(e.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '🚀 Deploy Edge Worker';
+      }
+    }
+
+    function escapeHtml(str) {
+      return (str || '').toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // ----------------------------------------------------
+    // Initialization
+    // ----------------------------------------------------
+    window.addEventListener('DOMContentLoaded', () => {
+      checkAuth();
+      loadStats();
+      loadProxies();
+      loadAPIKeys();
+      loadLogs();
+      window.addEventListener('resize', renderCanvasChart);
+    });
+
+    window.addEventListener('load', () => {
+      setTimeout(connectLiveEvents, 300);
+      setInterval(loadStats, 10000);
+    });
+  </script>
+</body>
+</html>
