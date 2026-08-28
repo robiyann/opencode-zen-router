@@ -1572,10 +1572,11 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 				totalTokens = promptTokens + completionTokens
 			}
 
-			go s.db.LogUsage(modelName, node.RawURL, resp.StatusCode, latencyMs, promptTokens, completionTokens, totalTokens, true)
+			keyID := ""
 			if keyObj != nil {
-				go s.db.RecordAPIKeyUsage(keyObj.ID, totalTokens)
+				keyID = keyObj.ID
 			}
+			s.db.LogUsage(modelName, node.RawURL, resp.StatusCode, latencyMs, promptTokens, completionTokens, totalTokens, true, keyID)
 
 			s.hub.Broadcast("request_done", map[string]interface{}{
 				"model":      modelName,
@@ -1617,10 +1618,11 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 			totalTokens = promptTokens + completionTokens
 		}
 
-		go s.db.LogUsage(modelName, node.RawURL, resp.StatusCode, latencyMs, promptTokens, completionTokens, totalTokens, false)
+		keyID := ""
 		if keyObj != nil {
-			go s.db.RecordAPIKeyUsage(keyObj.ID, totalTokens)
+			keyID = keyObj.ID
 		}
+		s.db.LogUsage(modelName, node.RawURL, resp.StatusCode, latencyMs, promptTokens, completionTokens, totalTokens, false, keyID)
 
 		s.hub.Broadcast("request_done", map[string]interface{}{
 			"model":      modelName,

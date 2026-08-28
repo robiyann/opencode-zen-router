@@ -55,8 +55,21 @@ type GlobalStats struct {
 	OutputTokens  int64 `json:"output_tokens"`
 }
 
+type UsageLogPayload struct {
+	Model            string
+	ProxyURL         string
+	Status           int
+	LatencyMs        int
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+	IsStream         bool
+	APIKeyID         string
+}
+
 type Database struct {
-	db *sql.DB
+	db      *sql.DB
+	logChan chan *UsageLogPayload
 }
 
 func InitDB(filepath string) (*Database, error) {
@@ -65,7 +78,16 @@ func InitDB(filepath string) (*Database, error) {
 		return nil, err
 	}
 
+	// SQLite High-Concurrency Optimizations: WAL mode, Busy Timeout & Cache
 	db.Exec("PRAGMA journal_mode=WAL;")
+	db.Exec("PRAGMA synchronous=NORMAL;")
+	db.Exec("PRAGMA busy_timeout=10000;")
+	db.Exec("PRAGMA cache_size=10000;")
+	db.Exec("PRAGMA temp_store=MEMORY;")
+
+	// Connection Pool Settings
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(10)
 
 	createTableQuery := `
 	CREATE TABLE IF NOT EXISTS proxies (
@@ -122,7 +144,13 @@ func InitDB(filepath string) (*Database, error) {
 	db.Exec("ALTER TABLE proxies ADD COLUMN success_count INTEGER DEFAULT 0;")
 	db.Exec("ALTER TABLE proxies ADD COLUMN error_count INTEGER DEFAULT 0;")
 
-	database := &Database{db: db}
+	database := &Database{
+		db:      db,
+		logChan: make(chan *UsageLogPayload, 20000),
+	}
+
+	// Start dedicated async log writer worker to completely eliminate race conditions and lock contention
+	go database.startLogWorker()
 
 	// Initialize default settings
 	database.SetSetting("strategy", "round-robin")
@@ -142,6 +170,39 @@ func InitDB(filepath string) (*Database, error) {
 	}
 
 	return database, nil
+}
+
+// Dedicated single-writer worker: drains logChan sequentially with prepared statements
+func (d *Database) startLogWorker() {
+	insertLogStmt, err := d.db.Prepare(`INSERT INTO usage_logs (model, proxy_url, status, latency_ms, prompt_tokens, completion_tokens, total_tokens, is_stream) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		log.Printf("[DB Worker] Failed to prepare insert log stmt: %v", err)
+	} else {
+		defer insertLogStmt.Close()
+	}
+
+	updateKeyStmt, err := d.db.Prepare(`UPDATE api_keys SET total_requests = total_requests + 1, total_tokens = total_tokens + ?, last_used_at = CURRENT_TIMESTAMP WHERE id = ?`)
+	if err != nil {
+		log.Printf("[DB Worker] Failed to prepare update key stmt: %v", err)
+	} else {
+		defer updateKeyStmt.Close()
+	}
+
+	for payload := range d.logChan {
+		if insertLogStmt != nil {
+			_, err := insertLogStmt.Exec(payload.Model, payload.ProxyURL, payload.Status, payload.LatencyMs, payload.PromptTokens, payload.CompletionTokens, payload.TotalTokens, payload.IsStream)
+			if err != nil {
+				log.Printf("[DB Worker] Log write error: %v", err)
+			}
+		}
+
+		if payload.APIKeyID != "" && updateKeyStmt != nil {
+			_, err := updateKeyStmt.Exec(payload.TotalTokens, payload.APIKeyID)
+			if err != nil {
+				log.Printf("[DB Worker] Key update error: %v", err)
+			}
+		}
+	}
 }
 
 // ----------------------------------------------------
@@ -338,11 +399,24 @@ func (d *Database) DeleteSession(token string) {
 // ----------------------------------------------------
 // Usage Logs & Global Stats
 // ----------------------------------------------------
-func (d *Database) LogUsage(model, proxyURL string, status, latencyMs, promptTokens, completionTokens, totalTokens int, isStream bool) error {
-	query := `INSERT INTO usage_logs (model, proxy_url, status, latency_ms, prompt_tokens, completion_tokens, total_tokens, is_stream) 
-	          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-	_, err := d.db.Exec(query, model, proxyURL, status, latencyMs, promptTokens, completionTokens, totalTokens, isStream)
-	return err
+func (d *Database) LogUsage(model, proxyURL string, status, latencyMs, promptTokens, completionTokens, totalTokens int, isStream bool, apiKeyID string) {
+	payload := &UsageLogPayload{
+		Model:            model,
+		ProxyURL:         proxyURL,
+		Status:           status,
+		LatencyMs:        latencyMs,
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		TotalTokens:      totalTokens,
+		IsStream:         isStream,
+		APIKeyID:         apiKeyID,
+	}
+
+	select {
+	case d.logChan <- payload:
+	default:
+		log.Printf("[DB] Log queue full, dropping metric to maintain maximum throughput")
+	}
 }
 
 func (d *Database) GetRecentLogs(limit int) ([]UsageLog, error) {
