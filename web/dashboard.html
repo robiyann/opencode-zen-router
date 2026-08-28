@@ -958,9 +958,13 @@
             <button type="button" class="btn btn-sm" onclick="exportProxyURLs()" style="flex: 1; background: var(--bg-card-hover); border-color: var(--border);">📋 Export URLs (.txt)</button>
           </div>
 
-          <div style="border-top: 1px solid var(--border); padding-top: 8px;">
-            <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">RESTORE FROM JSON BACKUP</label>
-            <input type="file" id="backup-file-input" accept=".json" onchange="importDatabaseBackup(event)" style="font-size: 11px; width: 100%;">
+          <div style="border-top: 1px solid var(--border); padding-top: 12px; margin-top: 6px;">
+            <label style="font-size: 11px; color: var(--purple); font-weight: 700; display: block; margin-bottom: 6px;">📤 RESTORE FROM JSON BACKUP</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input type="file" id="backup-file-input" accept=".json" onchange="handleBackupFileSelect(event)" style="font-size: 11px; flex: 1; padding: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;">
+              <button type="button" id="btn-do-restore" class="btn btn-primary btn-sm" onclick="executeDatabaseRestore()" style="white-space: nowrap; padding: 7px 14px; font-weight: 700;">⚡ Restore Now</button>
+            </div>
+            <div id="restore-status-hint" style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">Pilih file backup (.json) lalu klik <strong>Restore Now</strong></div>
           </div>
         </div>
 
@@ -1913,9 +1917,31 @@
       showToast(`Exported ${cachedProxies.length} relay URLs!`, 'success');
     }
 
-    async function importDatabaseBackup(event) {
-      const file = event.target.files?.[0];
-      if (!file) return;
+    let selectedBackupFile = null;
+
+    function handleBackupFileSelect(event) {
+      selectedBackupFile = event.target.files?.[0];
+      const hint = document.getElementById('restore-status-hint');
+      if (selectedBackupFile && hint) {
+        hint.innerHTML = `File terpilih: <strong style="color: var(--cyan);">${escapeHtml(selectedBackupFile.name)}</strong> (${(selectedBackupFile.size / 1024).toFixed(1)} KB) - Siap di-restore!`;
+      }
+    }
+
+    async function executeDatabaseRestore() {
+      const input = document.getElementById('backup-file-input');
+      const file = selectedBackupFile || input?.files?.[0];
+      if (!file) {
+        showToast('Pilih file backup .json terlebih dahulu!', 'warning');
+        return;
+      }
+
+      const btn = document.getElementById('btn-do-restore');
+      const hint = document.getElementById('restore-status-hint');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Restoring...';
+      }
+      if (hint) hint.innerHTML = '⏳ Sedang membaca dan memulihkan database...';
 
       try {
         const text = await file.text();
@@ -1929,19 +1955,32 @@
 
         const data = await res.json();
         if (res.ok && data.success) {
-          showToast(`Backup restored! Imported ${data.imported_providers || 0} providers, ${data.imported_proxies || 0} relays & ${data.imported_keys || 0} keys.`, 'success');
+          showToast(`Sukses! ${data.imported_providers || 0} Provider, ${data.imported_proxies || 0} Node Relay & ${data.imported_keys || 0} API Key berhasil di-restore!`, 'success');
+          if (hint) hint.innerHTML = `✅ <strong style="color: var(--green);">Database berhasil dipulihkan!</strong> (${data.imported_proxies || 0} Relays, ${data.imported_providers || 0} Providers)`;
           loadProxies();
           loadAPIKeys();
           loadProviders();
           loadStats();
+          if (input) input.value = '';
+          selectedBackupFile = null;
         } else {
           showToast(data.error || 'Failed to restore backup', 'error');
+          if (hint) hint.innerHTML = `❌ <span style="color: var(--red);">${escapeHtml(data.error || 'Gagal restore')}</span>`;
         }
       } catch (err) {
-        showToast('Invalid backup JSON file: ' + err.message, 'error');
+        showToast('File backup JSON tidak valid: ' + err.message, 'error');
+        if (hint) hint.innerHTML = `❌ <span style="color: var(--red);">Error: ${escapeHtml(err.message)}</span>`;
       } finally {
-        event.target.value = '';
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '⚡ Restore Now';
+        }
       }
+    }
+
+    async function importDatabaseBackup(event) {
+      handleBackupFileSelect(event);
+      executeDatabaseRestore();
     }
 
     async function syncAllVercelDeployments() {
