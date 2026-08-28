@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -26,15 +27,17 @@ type DBProxy struct {
 }
 
 type Provider struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	ProviderType string `json:"provider_type"` // 'opencode', 'genspark', 'openai'
-	BaseURL      string `json:"base_url"`
-	APIKey       string `json:"api_key"`
-	MaskedKey    string `json:"masked_key"`
-	IsActive     bool   `json:"is_active"`
-	Models       string `json:"models"` // '*' or comma-separated list
-	CreatedAt    string `json:"created_at"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	ProviderType string   `json:"provider_type"` // 'opencode', 'genspark', 'openai'
+	BaseURL      string   `json:"base_url"`
+	APIKey       string   `json:"api_key"`
+	APIKeysPool  []string `json:"api_keys_pool"` // Multi-key rotation pool
+	ModelPrefix  string   `json:"model_prefix"`  // e.g. "genspark", "opencode", "gs"
+	MaskedKey    string   `json:"masked_key"`
+	IsActive     bool     `json:"is_active"`
+	Models       string   `json:"models"` // '*' or comma-separated list
+	CreatedAt    string   `json:"created_at"`
 }
 
 type APIKey struct {
@@ -158,6 +161,8 @@ func InitDB(filepath string) (*Database, error) {
 		provider_type TEXT NOT NULL,
 		base_url TEXT NOT NULL,
 		api_key TEXT NOT NULL,
+		api_keys_pool TEXT DEFAULT '',
+		model_prefix TEXT DEFAULT '',
 		is_active BOOLEAN NOT NULL DEFAULT 1,
 		models TEXT DEFAULT '*',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -171,6 +176,8 @@ func InitDB(filepath string) (*Database, error) {
 	db.Exec("ALTER TABLE proxies ADD COLUMN success_count INTEGER DEFAULT 0;")
 	db.Exec("ALTER TABLE proxies ADD COLUMN error_count INTEGER DEFAULT 0;")
 	db.Exec("ALTER TABLE api_keys ADD COLUMN allowed_models TEXT DEFAULT '*';")
+	db.Exec("ALTER TABLE providers ADD COLUMN model_prefix TEXT DEFAULT '';")
+	db.Exec("ALTER TABLE providers ADD COLUMN api_keys_pool TEXT DEFAULT '';")
 
 	database := &Database{
 		db:      db,
@@ -412,10 +419,25 @@ func (k *APIKey) IsModelAllowed(modelName string) bool {
 
 	parts := strings.Split(allowed, ",")
 	cleanModel := strings.ToLower(strings.TrimSpace(modelName))
+
+	// If cleanModel has a prefix (e.g. "genspark/gpt-5"), extract bare model ("gpt-5")
+	bareModel := cleanModel
+	if strings.Contains(cleanModel, "/") {
+		sub := strings.SplitN(cleanModel, "/", 2)
+		bareModel = sub[1]
+	}
+
 	for _, p := range parts {
 		cleanPart := strings.ToLower(strings.TrimSpace(p))
-		if cleanPart == "*" || cleanPart == "all" || cleanPart == cleanModel {
+		if cleanPart == "*" || cleanPart == "all" || cleanPart == cleanModel || cleanPart == bareModel {
 			return true
+		}
+		// Prefix wildcard support (e.g. "genspark/*" or "opencode/*")
+		if strings.HasSuffix(cleanPart, "/*") {
+			prefix := strings.TrimSuffix(cleanPart, "/*")
+			if strings.HasPrefix(cleanModel, prefix+"/") {
+				return true
+			}
 		}
 	}
 	return false
@@ -531,20 +553,21 @@ func (d *Database) SetSetting(key, val string) error {
 // Multi-Provider Management
 // ----------------------------------------------------
 func (d *Database) SeedDefaultProviders() {
-	d.db.Exec(`INSERT OR IGNORE INTO providers (id, name, provider_type, base_url, api_key, is_active, models) 
-		VALUES ('opencode', 'OpenCode Zen Fleet', 'opencode', 'https://opencode.ai', 'public', 1, 'mimo-v2.5-free,glm-4-flash-free,deepseek-r1-free,qwen-2.5-coder-32b-free,nemotron-70b-free')`)
+	d.db.Exec(`INSERT OR IGNORE INTO providers (id, name, provider_type, base_url, api_key, api_keys_pool, model_prefix, is_active, models) 
+		VALUES ('opencode', 'OpenCode Zen Fleet', 'opencode', 'https://opencode.ai', 'public', '["public"]', 'opencode', 1, 'mimo-v2.5-free,glm-4-flash-free,deepseek-r1-free,qwen-2.5-coder-32b-free,nemotron-70b-free')`)
 
 	gensparkKey := os.Getenv("GENSPARK_API_KEY")
 	if gensparkKey == "" {
 		gensparkKey = "gsk-eyJjb2dlbl9pZCI6IjE2YjU1NDVjLTE0YjAtNDViYy04ZDVhLTljZDk3NmQ4OGM1OSIsImtleV9pZCI6IjZiMzIyNWM0LWE2NTUtNGNlNi05NjJlLWFkNDg4MTQxOTU1MCIsImN0aW1lIjoxNzg3OTA1NTk0LCJjbGF1ZGVfYmlnX21vZGVsIjpudWxsLCJjbGF1ZGVfbWlkZGxlX21vZGVsIjpudWxsLCJjbGF1ZGVfc21hbGxfbW9kZWwiOm51bGx9fD1aYahD898WbAVcM1pI3--HmiD7w9YIL34pfLrxmXnh"
 	}
 
-	d.db.Exec(`INSERT OR IGNORE INTO providers (id, name, provider_type, base_url, api_key, is_active, models) 
-		VALUES ('genspark', 'Genspark AI Gateway', 'genspark', 'https://www.genspark.ai/api/llm_proxy/v1', ?, 1, '*')`, gensparkKey)
+	gensparkPoolJSON, _ := json.Marshal([]string{gensparkKey})
+	d.db.Exec(`INSERT OR IGNORE INTO providers (id, name, provider_type, base_url, api_key, api_keys_pool, model_prefix, is_active, models) 
+		VALUES ('genspark', 'Genspark AI Gateway', 'genspark', 'https://www.genspark.ai/api/llm_proxy/v1', ?, ?, 'genspark', 1, '*')`, gensparkKey, string(gensparkPoolJSON))
 }
 
 func (d *Database) GetProviders() ([]Provider, error) {
-	rows, err := d.db.Query("SELECT id, name, provider_type, base_url, api_key, is_active, COALESCE(models, '*'), datetime(created_at) FROM providers ORDER BY created_at ASC")
+	rows, err := d.db.Query("SELECT id, name, provider_type, base_url, api_key, COALESCE(api_keys_pool, ''), COALESCE(model_prefix, ''), is_active, COALESCE(models, '*'), datetime(created_at) FROM providers ORDER BY created_at ASC")
 	if err != nil {
 		return nil, err
 	}
@@ -553,12 +576,46 @@ func (d *Database) GetProviders() ([]Provider, error) {
 	list := make([]Provider, 0)
 	for rows.Next() {
 		var p Provider
-		if err := rows.Scan(&p.ID, &p.Name, &p.ProviderType, &p.BaseURL, &p.APIKey, &p.IsActive, &p.Models, &p.CreatedAt); err == nil {
-			if len(p.APIKey) > 12 {
+		var rawPool string
+		if err := rows.Scan(&p.ID, &p.Name, &p.ProviderType, &p.BaseURL, &p.APIKey, &rawPool, &p.ModelPrefix, &p.IsActive, &p.Models, &p.CreatedAt); err == nil {
+			if p.ModelPrefix == "" {
+				p.ModelPrefix = p.ID
+			}
+
+			// Parse API Keys Pool
+			p.APIKeysPool = make([]string, 0)
+			if rawPool != "" {
+				json.Unmarshal([]byte(rawPool), &p.APIKeysPool)
+			}
+			if len(p.APIKeysPool) == 0 && p.APIKey != "" {
+				// Fallback split by comma or newline if user inputted raw
+				for _, line := range strings.Split(strings.ReplaceAll(p.APIKey, "\r\n", "\n"), "\n") {
+					for _, k := range strings.Split(line, ",") {
+						k = strings.TrimSpace(k)
+						if k != "" {
+							p.APIKeysPool = append(p.APIKeysPool, k)
+						}
+					}
+				}
+			}
+			if len(p.APIKeysPool) > 0 {
+				p.APIKey = p.APIKeysPool[0]
+			}
+
+			// Format Masked Key
+			if len(p.APIKeysPool) > 1 {
+				firstKey := p.APIKeysPool[0]
+				masked := firstKey
+				if len(firstKey) > 12 {
+					masked = firstKey[:6] + "..." + firstKey[len(firstKey)-3:]
+				}
+				p.MaskedKey = fmt.Sprintf("%s (%d keys pool)", masked, len(p.APIKeysPool))
+			} else if len(p.APIKey) > 12 {
 				p.MaskedKey = p.APIKey[:7] + "..." + p.APIKey[len(p.APIKey)-4:]
 			} else {
 				p.MaskedKey = p.APIKey
 			}
+
 			list = append(list, p)
 		}
 	}
@@ -585,19 +642,41 @@ func (d *Database) SaveProvider(p *Provider) error {
 		rand.Read(b)
 		p.ID = fmt.Sprintf("prov_%s", hex.EncodeToString(b))
 	}
+	if p.ModelPrefix == "" {
+		p.ModelPrefix = strings.ToLower(strings.ReplaceAll(p.Name, " ", "_"))
+	}
 	if p.Models == "" {
 		p.Models = "*"
 	}
-	query := `INSERT INTO providers (id, name, provider_type, base_url, api_key, is_active, models) 
-		VALUES (?, ?, ?, ?, ?, ?, ?) 
+
+	// Normalize api_keys_pool
+	if len(p.APIKeysPool) == 0 && p.APIKey != "" {
+		for _, line := range strings.Split(strings.ReplaceAll(p.APIKey, "\r\n", "\n"), "\n") {
+			for _, k := range strings.Split(line, ",") {
+				k = strings.TrimSpace(k)
+				if k != "" {
+					p.APIKeysPool = append(p.APIKeysPool, k)
+				}
+			}
+		}
+	}
+	if len(p.APIKeysPool) > 0 {
+		p.APIKey = p.APIKeysPool[0]
+	}
+	poolBytes, _ := json.Marshal(p.APIKeysPool)
+
+	query := `INSERT INTO providers (id, name, provider_type, base_url, api_key, api_keys_pool, model_prefix, is_active, models) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) 
 		ON CONFLICT(id) DO UPDATE SET 
 			name = excluded.name, 
 			provider_type = excluded.provider_type, 
 			base_url = excluded.base_url, 
 			api_key = excluded.api_key, 
+			api_keys_pool = excluded.api_keys_pool, 
+			model_prefix = excluded.model_prefix, 
 			is_active = excluded.is_active, 
 			models = excluded.models`
-	_, err := d.db.Exec(query, p.ID, p.Name, p.ProviderType, p.BaseURL, p.APIKey, p.IsActive, p.Models)
+	_, err := d.db.Exec(query, p.ID, p.Name, p.ProviderType, p.BaseURL, p.APIKey, string(poolBytes), p.ModelPrefix, p.IsActive, p.Models)
 	return err
 }
 

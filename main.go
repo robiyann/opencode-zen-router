@@ -389,24 +389,80 @@ func (c *PromptCache) startCleanup() {
 	}
 }
 
+// ----------------------------------------------------
+// Upstream Multi-Key Round-Robin Pool with Cooldown
+// ----------------------------------------------------
+type UpstreamKeyPool struct {
+	mu        sync.RWMutex
+	keys      []string
+	counter   atomic.Uint64
+	cooldowns map[string]time.Time
+}
+
+func NewUpstreamKeyPool() *UpstreamKeyPool {
+	return &UpstreamKeyPool{
+		keys:      make([]string, 0),
+		cooldowns: make(map[string]time.Time),
+	}
+}
+
+func (p *UpstreamKeyPool) SetKeys(keys []string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.keys = keys
+}
+
+func (p *UpstreamKeyPool) PickKey() (string, int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	now := time.Now()
+	n := len(p.keys)
+	if n == 0 {
+		return "", 0
+	}
+
+	startIdx := int(p.counter.Add(1) - 1)
+	for i := 0; i < n; i++ {
+		idx := (startIdx + i) % n
+		k := p.keys[idx]
+		if until, inCooldown := p.cooldowns[k]; !inCooldown || now.After(until) {
+			delete(p.cooldowns, k)
+			return k, len(p.keys)
+		}
+	}
+
+	// If all keys are in cooldown, return next key as fallback
+	return p.keys[startIdx%n], len(p.keys)
+}
+
+func (p *UpstreamKeyPool) MarkCooldown(key string, d time.Duration) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.cooldowns[key] = time.Now().Add(d)
+}
+
 // Router Server
 type RouterServer struct {
-	db          *Database
-	pool        *ProxyPool
-	hub         *EventHub
-	limiter     *LoginLimiter
-	promptCache *PromptCache
-	httpClient  *http.Client
-	startTime   time.Time
+	db               *Database
+	pool             *ProxyPool
+	hub              *EventHub
+	limiter          *LoginLimiter
+	promptCache      *PromptCache
+	httpClient       *http.Client
+	providerKeyPools map[string]*UpstreamKeyPool
+	keyPoolMu        sync.RWMutex
+	startTime        time.Time
 }
 
 func NewRouterServer(db *Database, pool *ProxyPool, hub *EventHub) *RouterServer {
 	return &RouterServer{
-		db:          db,
-		pool:        pool,
-		hub:         hub,
-		limiter:     NewLoginLimiter(),
-		promptCache: NewPromptCache(1 * time.Hour),
+		db:               db,
+		pool:             pool,
+		hub:              hub,
+		limiter:          NewLoginLimiter(),
+		promptCache:      NewPromptCache(1 * time.Hour),
+		providerKeyPools: make(map[string]*UpstreamKeyPool),
 		httpClient: &http.Client{
 			Transport: &http.Transport{
 				ResponseHeaderTimeout: 65 * time.Second,
@@ -418,6 +474,24 @@ func NewRouterServer(db *Database, pool *ProxyPool, hub *EventHub) *RouterServer
 		},
 		startTime: time.Now(),
 	}
+}
+
+func (s *RouterServer) GetKeyPoolForProvider(p *Provider) *UpstreamKeyPool {
+	s.keyPoolMu.Lock()
+	defer s.keyPoolMu.Unlock()
+
+	pool, exists := s.providerKeyPools[p.ID]
+	if !exists {
+		pool = NewUpstreamKeyPool()
+		s.providerKeyPools[p.ID] = pool
+	}
+
+	poolKeys := p.APIKeysPool
+	if len(poolKeys) == 0 && p.APIKey != "" {
+		poolKeys = []string{p.APIKey}
+	}
+	pool.SetKeys(poolKeys)
+	return pool
 }
 
 func extractSessionID(r *http.Request, bodyBytes []byte) string {
@@ -872,61 +946,79 @@ func (s *RouterServer) HandleAPIToggleProvider(w http.ResponseWriter, r *http.Re
 	json.NewEncoder(w).Encode(map[string]bool{"is_active": req.IsActive})
 }
 
-func (s *RouterServer) ResolveProviderForModel(modelName string) *Provider {
+func (s *RouterServer) ResolveProviderAndCleanModel(modelName string) (*Provider, string) {
 	activeProviders, err := s.db.GetActiveProviders()
 	if err != nil || len(activeProviders) == 0 {
-		return nil
+		return nil, modelName
 	}
 
-	cleanModel := strings.ToLower(strings.TrimSpace(modelName))
+	cleanModel := strings.TrimSpace(modelName)
+	cleanModelLower := strings.ToLower(cleanModel)
 
-	// 1. Check explicit model matching list
+	// 1. Check if model has an explicit prefix: "<prefix>/<actual_model>"
+	if strings.Contains(cleanModel, "/") {
+		parts := strings.SplitN(cleanModel, "/", 2)
+		prefix := strings.ToLower(strings.TrimSpace(parts[0]))
+		actualModel := strings.TrimSpace(parts[1])
+
+		for _, p := range activeProviders {
+			provPrefix := strings.ToLower(strings.TrimSpace(p.ModelPrefix))
+			if provPrefix == "" {
+				provPrefix = strings.ToLower(p.ID)
+			}
+			if prefix == provPrefix || prefix == strings.ToLower(p.ID) || prefix == strings.ToLower(p.Name) {
+				return &p, actualModel
+			}
+		}
+	}
+
+	// 2. Check explicit model matching list without prefix
 	for _, p := range activeProviders {
 		if p.Models != "*" && p.Models != "" && p.Models != "all" {
 			parts := strings.Split(p.Models, ",")
 			for _, part := range parts {
-				if strings.ToLower(strings.TrimSpace(part)) == cleanModel {
-					return &p
+				if strings.ToLower(strings.TrimSpace(part)) == cleanModelLower {
+					return &p, cleanModel
 				}
 			}
 		}
 	}
 
-	// 2. Pattern-based routing for Genspark vs OpenCode
-	isGensparkModel := strings.HasPrefix(cleanModel, "gpt-") ||
-		strings.HasPrefix(cleanModel, "claude-") ||
-		strings.HasPrefix(cleanModel, "deep-seek-") ||
-		strings.HasPrefix(cleanModel, "deepseek-v4") ||
-		strings.HasPrefix(cleanModel, "kimi-") ||
-		strings.HasPrefix(cleanModel, "glm-5") ||
-		strings.HasPrefix(cleanModel, "minimax-") ||
-		strings.HasPrefix(cleanModel, "grok-") ||
-		strings.HasPrefix(cleanModel, "solar-") ||
-		strings.HasPrefix(cleanModel, "trinity-")
+	// 3. Pattern-based routing for Genspark vs OpenCode
+	isGensparkModel := strings.HasPrefix(cleanModelLower, "gpt-") ||
+		strings.HasPrefix(cleanModelLower, "claude-") ||
+		strings.HasPrefix(cleanModelLower, "deep-seek-") ||
+		strings.HasPrefix(cleanModelLower, "deepseek-v4") ||
+		strings.HasPrefix(cleanModelLower, "kimi-") ||
+		strings.HasPrefix(cleanModelLower, "glm-5") ||
+		strings.HasPrefix(cleanModelLower, "minimax-") ||
+		strings.HasPrefix(cleanModelLower, "grok-") ||
+		strings.HasPrefix(cleanModelLower, "solar-") ||
+		strings.HasPrefix(cleanModelLower, "trinity-")
 
 	if isGensparkModel {
 		for _, p := range activeProviders {
 			if p.ProviderType == "genspark" {
-				return &p
+				return &p, cleanModel
 			}
 		}
 	}
 
-	// 3. Fallback to OpenCode fleet if model is free or default
+	// 4. Fallback to OpenCode fleet if model is free or default
 	for _, p := range activeProviders {
 		if p.ProviderType == "opencode" {
-			return &p
+			return &p, cleanModel
 		}
 	}
 
-	// 4. Any active wildcard provider
+	// 5. Any active wildcard provider
 	for _, p := range activeProviders {
 		if p.Models == "*" || p.Models == "all" {
-			return &p
+			return &p, cleanModel
 		}
 	}
 
-	return nil
+	return nil, cleanModel
 }
 
 // ----------------------------------------------------
@@ -1614,25 +1706,46 @@ func (s *RouterServer) HandleModels(w http.ResponseWriter, r *http.Request) {
 
 	modelMap := make(map[string]map[string]interface{})
 
-	// 1. Default OpenCode models
-	defaultOpenCodeModels := []string{"mimo-v2.5-free", "glm-4-flash-free", "deepseek-r1-free", "qwen-2.5-coder-32b-free", "nemotron-70b-free"}
-	for _, m := range defaultOpenCodeModels {
-		modelMap[m] = map[string]interface{}{
-			"id":       m,
-			"object":   "model",
-			"created":  time.Now().Unix(),
-			"owned_by": "opencode-zen",
-		}
-	}
-
-	// 2. Fetch models from active providers (e.g. Genspark AI)
+	// 1. Fetch from all active providers
 	activeProviders, _ := s.db.GetActiveProviders()
+	defaultOpenCodeModels := []string{"mimo-v2.5-free", "glm-4-flash-free", "deepseek-r1-free", "qwen-2.5-coder-32b-free", "nemotron-70b-free"}
+
 	for _, p := range activeProviders {
-		if p.ProviderType != "opencode" && p.BaseURL != "" {
+		prefix := p.ModelPrefix
+		if prefix == "" {
+			prefix = p.ID
+		}
+
+		if p.ProviderType == "opencode" {
+			for _, m := range defaultOpenCodeModels {
+				// Prefixed model ID (e.g. "opencode/mimo-v2.5-free")
+				prefixedID := fmt.Sprintf("%s/%s", prefix, m)
+				modelMap[prefixedID] = map[string]interface{}{
+					"id":       prefixedID,
+					"object":   "model",
+					"created":  time.Now().Unix(),
+					"owned_by": p.Name,
+				}
+				// Direct bare alias (e.g. "mimo-v2.5-free")
+				if _, exists := modelMap[m]; !exists {
+					modelMap[m] = map[string]interface{}{
+						"id":       m,
+						"object":   "model",
+						"created":  time.Now().Unix(),
+						"owned_by": p.Name,
+					}
+				}
+			}
+		} else if p.BaseURL != "" {
 			targetURL := strings.TrimRight(p.BaseURL, "/") + "/models"
 			req, err := http.NewRequest(http.MethodGet, targetURL, nil)
 			if err == nil {
-				req.Header.Set("Authorization", "Bearer "+p.APIKey)
+				keyPool := s.GetKeyPoolForProvider(&p)
+				apiKey, _ := keyPool.PickKey()
+				if apiKey == "" {
+					apiKey = p.APIKey
+				}
+				req.Header.Set("Authorization", "Bearer "+apiKey)
 				client := &http.Client{Timeout: 5 * time.Second}
 				resp, err := client.Do(req)
 				if err == nil && resp.StatusCode == 200 {
@@ -1642,8 +1755,19 @@ func (s *RouterServer) HandleModels(w http.ResponseWriter, r *http.Request) {
 					if err := json.NewDecoder(resp.Body).Decode(&pModels); err == nil {
 						for _, item := range pModels.Data {
 							if id, ok := item["id"].(string); ok && id != "" {
-								item["owned_by"] = p.Name
-								modelMap[id] = item
+								// Prefixed model ID (e.g. "genspark/gpt-5")
+								prefixedID := fmt.Sprintf("%s/%s", prefix, id)
+								modelMap[prefixedID] = map[string]interface{}{
+									"id":       prefixedID,
+									"object":   "model",
+									"created":  time.Now().Unix(),
+									"owned_by": p.Name,
+								}
+								// Direct bare alias
+								if _, exists := modelMap[id]; !exists {
+									item["owned_by"] = p.Name
+									modelMap[id] = item
+								}
 							}
 						}
 					}
@@ -1730,10 +1854,17 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// 2. Multi-Provider Router Resolution (e.g. Genspark AI Gateway vs OpenCode Zen Relays)
-	provider := s.ResolveProviderForModel(modelName)
+	// 2. Multi-Provider Router Resolution & Model Prefix Stripping
+	provider, cleanModelName := s.ResolveProviderAndCleanModel(modelName)
+
+	// Update payload model to cleanModelName so upstream gets exact model without prefix
+	if cleanModelName != modelName {
+		reqBody["model"] = cleanModelName
+		bodyBytes, _ = json.Marshal(reqBody)
+	}
+
 	if provider != nil && provider.ProviderType != "opencode" {
-		s.handleDirectProviderCompletion(w, r, provider, modelName, bodyBytes, isStream, keyObj)
+		s.handleDirectProviderCompletion(w, r, provider, cleanModelName, bodyBytes, isStream, keyObj)
 		return
 	}
 
@@ -1742,7 +1873,7 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 	defer s.pool.inFlight.Add(-1)
 
 	s.hub.Broadcast("request_start", map[string]interface{}{
-		"model":     modelName,
+		"model":     cleanModelName,
 		"is_stream": isStream,
 		"in_flight": s.pool.inFlight.Load(),
 	})
@@ -1770,6 +1901,7 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 		}
 
 		req.Header.Set("Authorization", "Bearer public")
+		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("x-opencode-client", "desktop")
 		if sessionID != "" {
 			req.Header.Set("x-opencode-session", fmt.Sprintf("ses_%s", sessionID))
@@ -1810,7 +1942,7 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 		s.pool.totalRouted.Add(1)
 		duration := time.Since(t0)
 		latencyMs := int(duration.Milliseconds())
-		log.Printf("[Routed] %s -> %s (%d OK) [%v] (Model: %s)", r.RemoteAddr, node.RawURL, resp.StatusCode, duration, modelName)
+		log.Printf("[Routed] %s -> %s (%d OK) [%v] (Model: %s)", r.RemoteAddr, node.RawURL, resp.StatusCode, duration, cleanModelName)
 
 		go s.db.UpdateProxyStatus(node.RawURL, resp.StatusCode, latencyMs, true)
 
@@ -1877,10 +2009,10 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 			if keyObj != nil {
 				keyID = keyObj.ID
 			}
-			s.db.LogUsage(modelName, node.RawURL, resp.StatusCode, latencyMs, promptTokens, completionTokens, totalTokens, true, keyID)
+			s.db.LogUsage(cleanModelName, node.RawURL, resp.StatusCode, latencyMs, promptTokens, completionTokens, totalTokens, true, keyID)
 
 			s.hub.Broadcast("request_done", map[string]interface{}{
-				"model":      modelName,
+				"model":      cleanModelName,
 				"proxy":      node.RawURL,
 				"latency_ms": latencyMs,
 				"tokens":     totalTokens,
@@ -1951,34 +2083,83 @@ func (s *RouterServer) handleDirectProviderCompletion(w http.ResponseWriter, r *
 		"in_flight": s.pool.inFlight.Load(),
 	})
 
+	keyPool := s.GetKeyPoolForProvider(provider)
+	maxKeyRetries := 3
+
+	var lastResp *http.Response
+	var lastErr error
+	var chosenKey string
+	var totalAttempts int
+	var latencyMs int
+
 	targetURL := strings.TrimRight(provider.BaseURL, "/") + "/chat/completions"
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, targetURL, bytes.NewReader(bodyBytes))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+	for attempt := 0; attempt < maxKeyRetries; attempt++ {
+		totalAttempts++
+		apiKey, poolSize := keyPool.PickKey()
+		chosenKey = apiKey
+		if apiKey == "" {
+			apiKey = provider.APIKey
+		}
+
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, targetURL, bytes.NewReader(bodyBytes))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		req.Header.Set("Content-Type", "application/json")
+		if isStream {
+			req.Header.Set("Accept", "text/event-stream")
+		} else {
+			req.Header.Set("Accept", "application/json")
+		}
+
+		attemptT0 := time.Now()
+		resp, err := s.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			keyPool.MarkCooldown(apiKey, 15*time.Second)
+			log.Printf("[Key Failover #%d] Key in %s failed with network error: %v, trying next key...", attempt+1, provider.Name, err)
+			continue
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode >= 500 {
+			resp.Body.Close()
+			keyPool.MarkCooldown(apiKey, 30*time.Second)
+			log.Printf("[Key Failover #%d] Key in %s returned HTTP %d, cooling down and trying next key in pool (size: %d)...", attempt+1, provider.Name, resp.StatusCode, poolSize)
+			if poolSize > 1 {
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+			lastErr = fmt.Errorf("upstream key returned HTTP %d", resp.StatusCode)
+			break
+		}
+
+		lastResp = resp
+		latencyMs = int(time.Since(attemptT0).Milliseconds())
+		lastErr = nil
+		break
+	}
+
+	if lastResp == nil {
+		if lastErr != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"Provider %s failed across key pool: %v"}`, provider.Name, lastErr), http.StatusBadGateway)
+		} else {
+			http.Error(w, fmt.Sprintf(`{"error":"Provider %s unavailable"}`, provider.Name), http.StatusBadGateway)
+		}
 		return
 	}
+	defer lastResp.Body.Close()
 
-	req.Header.Set("Authorization", "Bearer "+provider.APIKey)
-	req.Header.Set("Content-Type", "application/json")
-	if isStream {
-		req.Header.Set("Accept", "text/event-stream")
-	} else {
-		req.Header.Set("Accept", "application/json")
-	}
-
-	t0 := time.Now()
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"Provider %s unreachable: %s"}`, provider.Name, err.Error()), http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	duration := time.Since(t0)
-	latencyMs := int(duration.Milliseconds())
-	log.Printf("[Provider Routed] %s -> %s (%d OK) [%v] (Model: %s)", r.RemoteAddr, provider.Name, resp.StatusCode, duration, modelName)
-
+	resp := lastResp
 	s.pool.totalRouted.Add(1)
+	maskedKey := chosenKey
+	if len(chosenKey) > 10 {
+		maskedKey = chosenKey[:6] + "..." + chosenKey[len(chosenKey)-3:]
+	}
+	log.Printf("[Provider Routed] %s -> %s [Key: %s] (%d OK) (Model: %s)", r.RemoteAddr, provider.Name, maskedKey, resp.StatusCode, modelName)
 
 	for k, v := range resp.Header {
 		w.Header()[k] = v

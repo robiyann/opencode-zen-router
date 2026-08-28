@@ -560,19 +560,27 @@
 
   <!-- EDIT PROVIDER MODAL -->
   <div id="edit-provider-modal" class="modal-overlay">
-    <div class="modal" style="max-width: 500px;">
+    <div class="modal" style="max-width: 520px;">
       <div class="modal-header">
-        <h3 class="modal-title">Edit Provider & API Key</h3>
+        <h3 class="modal-title">Edit Provider, Prefix & Key Pool</h3>
         <button class="btn btn-secondary btn-sm" onclick="closeModal('edit-provider-modal')">✕</button>
       </div>
-      <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Update API key, endpoint, or models filter for this upstream provider:</p>
+      <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Configure custom model prefix and multi-key rotation pool with auto-failover:</p>
       
       <form onsubmit="submitEditProvider(event)" style="display: flex; flex-direction: column; gap: 10px;">
         <input type="hidden" id="edit-prov-id">
-        <div>
-          <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 3px;">PROVIDER NAME</label>
-          <input type="text" id="edit-prov-name" required style="width: 100%;">
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div>
+            <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 3px;">PROVIDER NAME</label>
+            <input type="text" id="edit-prov-name" required style="width: 100%;">
+          </div>
+          <div>
+            <label style="font-size: 10px; color: var(--purple); font-weight: 700; display: block; margin-bottom: 3px;">CUSTOM MODEL PREFIX</label>
+            <input type="text" id="edit-prov-prefix" placeholder="e.g. genspark, gs, opencode" style="width: 100%; font-family: var(--font-mono); color: var(--purple);">
+          </div>
         </div>
+
         <div>
           <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 3px;">PROVIDER TYPE</label>
           <select id="edit-prov-type" style="width: 100%; padding: 6px 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; color: var(--text);">
@@ -581,14 +589,18 @@
             <option value="opencode">OpenCode Fleet</option>
           </select>
         </div>
+
         <div>
           <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 3px;">BASE URL ENDPOINT</label>
-          <input type="url" id="edit-prov-url" required style="width: 100%;">
+          <input type="url" id="edit-prov-url" required style="width: 100%; font-family: var(--font-mono);">
         </div>
+
         <div>
-          <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 3px;">API KEY (SECRET TOKEN)</label>
-          <input type="text" id="edit-prov-key" placeholder="Enter API Key (e.g. gsk-...)" style="width: 100%; font-family: var(--font-mono);" required>
+          <label style="font-size: 10px; color: var(--cyan); font-weight: 700; display: block; margin-bottom: 3px;">UPSTREAM API KEYS POOL (ROUND-ROBIN ROTATION)</label>
+          <textarea id="edit-prov-key" rows="4" placeholder="Paste multiple API keys (one per line)&#10;gsk-key-1...&#10;gsk-key-2...&#10;gsk-key-3..." style="width: 100%; font-family: var(--font-mono); font-size: 11px; padding: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text);" required></textarea>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 3px;">Requests will automatically rotate round-robin across active keys. Keys with 429 errors auto-cooldown.</div>
         </div>
+
         <div>
           <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 3px;">MODELS FILTER</label>
           <input type="text" id="edit-prov-models" placeholder="* for all models, or comma-separated" style="width: 100%;">
@@ -596,7 +608,7 @@
 
         <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px;">
           <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('edit-provider-modal')">Cancel</button>
-          <button type="submit" class="btn btn-sm">💾 Update Provider Key</button>
+          <button type="submit" class="btn btn-sm">💾 Save Prefix & Key Pool</button>
         </div>
       </form>
     </div>
@@ -988,7 +1000,7 @@
       <!-- Connect Provider Form -->
       <div class="card" style="margin-bottom: 12px;">
         <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">Connect New AI Provider</div>
-        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Route models dynamically through Genspark AI, OpenCode Zen, or any custom OpenAI-compatible API gateway.</p>
+        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Route models dynamically through Genspark AI, OpenCode Zen, or any custom OpenAI-compatible API gateway with custom prefix & key pool.</p>
         
         <div style="display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;">
           <span style="font-size: 10px; color: var(--text-muted); font-weight: 700;">PRESETS:</span>
@@ -999,13 +1011,14 @@
 
         <form onsubmit="saveProviderForm(event)" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin-bottom: 8px;">
           <input type="text" id="prov-name" placeholder="Provider Name (e.g. Genspark AI)" required>
+          <input type="text" id="prov-prefix" placeholder="Model Prefix (e.g. genspark, gs)" style="font-family: var(--font-mono); color: var(--purple);">
           <select id="prov-type" style="padding: 6px 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; color: var(--text);">
             <option value="genspark">Genspark AI Proxy</option>
             <option value="openai">OpenAI Compatible Gateway</option>
             <option value="opencode">OpenCode Fleet</option>
           </select>
           <input type="url" id="prov-url" placeholder="https://www.genspark.ai/api/llm_proxy/v1" required>
-          <input type="password" id="prov-key" placeholder="API Key (e.g. gsk-...)" style="font-family: var(--font-mono);" required>
+          <input type="text" id="prov-key" placeholder="API Key(s) (e.g. gsk-...)" style="font-family: var(--font-mono); grid-column: 1 / -1;" required>
           <input type="text" id="prov-models" placeholder="Models Filter (* for all, or comma-separated)" value="*" style="grid-column: 1 / -1;">
           <button type="submit" class="btn btn-sm" style="grid-column: 1 / -1;">✨ Save & Activate Provider</button>
         </form>
@@ -1017,9 +1030,10 @@
           <thead>
             <tr>
               <th>Provider / Name</th>
+              <th>Prefix</th>
               <th>Type</th>
               <th>Base Endpoint</th>
-              <th>API Key</th>
+              <th>Upstream Key Pool</th>
               <th>Models</th>
               <th>Status</th>
               <th style="text-align: center;">Actions</th>
@@ -1975,18 +1989,21 @@
     function setProviderPreset(type) {
       if (type === 'genspark') {
         document.getElementById('prov-name').value = 'Genspark AI';
+        document.getElementById('prov-prefix').value = 'genspark';
         document.getElementById('prov-type').value = 'genspark';
         document.getElementById('prov-url').value = 'https://www.genspark.ai/api/llm_proxy/v1';
         document.getElementById('prov-key').value = '';
         document.getElementById('prov-models').value = '*';
       } else if (type === 'openai') {
         document.getElementById('prov-name').value = 'OpenAI Official';
+        document.getElementById('prov-prefix').value = 'openai';
         document.getElementById('prov-type').value = 'openai';
         document.getElementById('prov-url').value = 'https://api.openai.com/v1';
         document.getElementById('prov-key').value = '';
         document.getElementById('prov-models').value = 'gpt-4o,gpt-4o-mini,o1,o3-mini';
       } else if (type === 'groq') {
         document.getElementById('prov-name').value = 'Groq Cloud';
+        document.getElementById('prov-prefix').value = 'groq';
         document.getElementById('prov-type').value = 'openai';
         document.getElementById('prov-url').value = 'https://api.groq.com/openai/v1';
         document.getElementById('prov-key').value = '';
@@ -2007,19 +2024,20 @@
         if (!tbody) return;
 
         if (!cachedProviders.length) {
-          tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 20px;">No providers configured.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">No providers configured.</td></tr>';
           return;
         }
 
         tbody.innerHTML = cachedProviders.map(p => `
           <tr>
             <td><strong>${escapeHtml(p.name)}</strong></td>
+            <td><code style="color: var(--purple); font-family: var(--font-mono); font-weight: 700;">${escapeHtml(p.model_prefix || p.id)}/</code></td>
             <td><span class="badge ${p.provider_type === 'genspark' ? 'badge-yellow' : (p.provider_type === 'opencode' ? 'badge-blue' : 'badge-green')}">${escapeHtml(p.provider_type.toUpperCase())}</span></td>
             <td><code style="color: var(--cyan); font-family: var(--font-mono); font-size: 11px;">${escapeHtml(p.base_url)}</code></td>
             <td>
               <div style="display: flex; align-items: center; gap: 4px;">
                 <code style="color: var(--text-muted); font-family: var(--font-mono); font-size: 11px;">${escapeHtml(p.masked_key)}</code>
-                <button class="btn btn-secondary btn-sm" style="padding: 2px 6px; font-size: 10px;" onclick="openEditProvider('${p.id}')">✏️ Edit Key</button>
+                <button class="btn btn-secondary btn-sm" style="padding: 2px 6px; font-size: 10px;" onclick="openEditProvider('${p.id}')">✏️ Keys Pool</button>
               </div>
             </td>
             <td><span class="badge" style="font-size: 10px; background: rgba(255,255,255,0.05);">${escapeHtml(p.models || '*')}</span></td>
@@ -2040,9 +2058,10 @@
 
       document.getElementById('edit-prov-id').value = p.id;
       document.getElementById('edit-prov-name').value = p.name;
+      document.getElementById('edit-prov-prefix').value = p.model_prefix || p.id;
       document.getElementById('edit-prov-type').value = p.provider_type;
       document.getElementById('edit-prov-url').value = p.base_url;
-      document.getElementById('edit-prov-key').value = p.api_key;
+      document.getElementById('edit-prov-key').value = (p.api_keys_pool && p.api_keys_pool.length) ? p.api_keys_pool.join('\n') : p.api_key;
       document.getElementById('edit-prov-models').value = p.models || '*';
 
       openModal('edit-provider-modal');
@@ -2052,19 +2071,22 @@
       e.preventDefault();
       const id = document.getElementById('edit-prov-id').value;
       const name = document.getElementById('edit-prov-name').value.trim();
+      const model_prefix = document.getElementById('edit-prov-prefix').value.trim();
       const provider_type = document.getElementById('edit-prov-type').value;
       const base_url = document.getElementById('edit-prov-url').value.trim();
-      const api_key = document.getElementById('edit-prov-key').value.trim();
+      const rawKeys = document.getElementById('edit-prov-key').value;
+      const api_keys_pool = rawKeys.split(/[\r\n,]+/).map(k => k.trim()).filter(Boolean);
+      const api_key = api_keys_pool.length > 0 ? api_keys_pool[0] : '';
       const models = document.getElementById('edit-prov-models').value.trim() || '*';
 
       try {
         const res = await apiFetch('/api/providers', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, name, provider_type, base_url, api_key, models })
+          body: JSON.stringify({ id, name, model_prefix, provider_type, base_url, api_key, api_keys_pool, models })
         });
         if (res.ok) {
-          showToast(`Updated API Key for ${name}!`, 'success');
+          showToast(`Saved prefix & key pool for ${name}!`, 'success');
           closeModal('edit-provider-modal');
           loadProviders();
         } else {
@@ -2078,20 +2100,24 @@
     async function saveProviderForm(e) {
       e.preventDefault();
       const name = document.getElementById('prov-name').value.trim();
+      const model_prefix = document.getElementById('prov-prefix').value.trim() || name.toLowerCase().replace(/\s+/g, '_');
       const provider_type = document.getElementById('prov-type').value;
       const base_url = document.getElementById('prov-url').value.trim();
-      const api_key = document.getElementById('prov-key').value.trim();
+      const rawKeys = document.getElementById('prov-key').value;
+      const api_keys_pool = rawKeys.split(/[\r\n,]+/).map(k => k.trim()).filter(Boolean);
+      const api_key = api_keys_pool.length > 0 ? api_keys_pool[0] : '';
       const models = document.getElementById('prov-models').value.trim() || '*';
 
       try {
         const res = await apiFetch('/api/providers', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, provider_type, base_url, api_key, models })
+          body: JSON.stringify({ name, model_prefix, provider_type, base_url, api_key, api_keys_pool, models })
         });
         if (res.ok) {
-          showToast('Provider connected and saved!', 'success');
+          showToast('Provider connected with custom prefix & key pool!', 'success');
           document.getElementById('prov-name').value = '';
+          document.getElementById('prov-prefix').value = '';
           document.getElementById('prov-url').value = '';
           document.getElementById('prov-key').value = '';
           document.getElementById('prov-models').value = '*';
