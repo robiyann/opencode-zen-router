@@ -1990,6 +1990,12 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 		for k, v := range resp.Header {
 			w.Header()[k] = v
 		}
+		if isStream {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+			w.Header().Set("X-Accel-Buffering", "no")
+		}
 		w.Header().Set("x-router-proxy", node.RawURL)
 		w.Header().Set("x-router-cache", "MISS")
 		w.WriteHeader(resp.StatusCode)
@@ -2160,6 +2166,12 @@ func (s *RouterServer) handleDirectProviderCompletion(w http.ResponseWriter, r *
 
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 		req.Header.Set("Content-Type", "application/json")
+		if strings.Contains(provider.BaseURL, "opencode.ai") {
+			req.Header.Set("User-Agent", "opencode")
+			req.Header.Set("x-opencode-client", "desktop")
+			req.Header.Set("x-opencode-session", fmt.Sprintf("ses_%s", genRandomHex(16)))
+			req.Header.Set("x-opencode-request", fmt.Sprintf("msg_%s", genRandomHex(16)))
+		}
 		if isStream {
 			req.Header.Set("Accept", "text/event-stream")
 		} else {
@@ -2213,6 +2225,12 @@ func (s *RouterServer) handleDirectProviderCompletion(w http.ResponseWriter, r *
 
 	for k, v := range resp.Header {
 		w.Header()[k] = v
+	}
+	if isStream {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
 	}
 	w.Header().Set("x-router-provider", provider.Name)
 	w.Header().Set("x-router-cache", "MISS")
