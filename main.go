@@ -2012,8 +2012,12 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 			for {
 				n, readErr := resp.Body.Read(buf)
 				if n > 0 {
-					w.Write(buf[:n])
-					streamBuffer.Write(buf[:n])
+					chunk := buf[:n]
+					if bytes.Contains(chunk, []byte(`"reasoning":`)) && !bytes.Contains(chunk, []byte(`"reasoning_content":`)) {
+						chunk = bytes.ReplaceAll(chunk, []byte(`"reasoning":`), []byte(`"reasoning_content":`))
+					}
+					w.Write(chunk)
+					streamBuffer.Write(chunk)
 					if canFlush {
 						flusher.Flush()
 					}
@@ -2072,6 +2076,10 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 
 		respBodyBytes, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+
+		if bytes.Contains(respBodyBytes, []byte(`"reasoning":`)) && !bytes.Contains(respBodyBytes, []byte(`"reasoning_content":`)) {
+			respBodyBytes = bytes.ReplaceAll(respBodyBytes, []byte(`"reasoning":`), []byte(`"reasoning_content":`))
+		}
 
 		// Save to PromptCache for instant 0ms responses on future matching prompts
 		if len(respBodyBytes) > 0 {
@@ -2253,8 +2261,12 @@ func (s *RouterServer) handleDirectProviderCompletion(w http.ResponseWriter, r *
 		for {
 			n, readErr := resp.Body.Read(buf)
 			if n > 0 {
-				w.Write(buf[:n])
-				streamBuffer.Write(buf[:n])
+				chunk := buf[:n]
+				if bytes.Contains(chunk, []byte(`"reasoning":`)) && !bytes.Contains(chunk, []byte(`"reasoning_content":`)) {
+					chunk = bytes.ReplaceAll(chunk, []byte(`"reasoning":`), []byte(`"reasoning_content":`))
+				}
+				w.Write(chunk)
+				streamBuffer.Write(chunk)
 				if canFlush {
 					flusher.Flush()
 				}
@@ -2292,6 +2304,9 @@ func (s *RouterServer) handleDirectProviderCompletion(w http.ResponseWriter, r *
 		}
 	} else {
 		respBodyBytes, _ := io.ReadAll(resp.Body)
+		if bytes.Contains(respBodyBytes, []byte(`"reasoning":`)) && !bytes.Contains(respBodyBytes, []byte(`"reasoning_content":`)) {
+			respBodyBytes = bytes.ReplaceAll(respBodyBytes, []byte(`"reasoning":`), []byte(`"reasoning_content":`))
+		}
 		w.Write(respBodyBytes)
 
 		var parsedResp struct {
