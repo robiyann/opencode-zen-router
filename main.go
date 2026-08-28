@@ -1095,6 +1095,188 @@ export default async function handler(req) {
 }
 
 // ----------------------------------------------------
+// Export & Backup Database (JSON)
+// ----------------------------------------------------
+func (s *RouterServer) HandleAPIExportBackup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireAuth(w, r) {
+		return
+	}
+
+	proxies, _ := s.db.GetAllProxies()
+	keys, _ := s.db.GetAPIKeys()
+	strategy := s.db.GetSetting("strategy", "round-robin")
+
+	backup := map[string]interface{}{
+		"version":     "1.0.0",
+		"exported_at": time.Now().UTC().Format(time.RFC3339),
+		"strategy":    strategy,
+		"proxies":     proxies,
+		"api_keys":    keys,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="zyrouter-backup-%s.json"`, time.Now().Format("2006-01-02-150405")))
+	json.NewEncoder(w).Encode(backup)
+}
+
+// ----------------------------------------------------
+// Import & Restore Database (JSON)
+// ----------------------------------------------------
+func (s *RouterServer) HandleAPIImportBackup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireAuth(w, r) {
+		return
+	}
+
+	var data struct {
+		Strategy string `json:"strategy"`
+		Proxies  []struct {
+			Name string `json:"name"`
+			URL  string `json:"url"`
+		} `json:"proxies"`
+		APIKeys []struct {
+			Key  string `json:"key"`
+			Name string `json:"name"`
+		} `json:"api_keys"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"Invalid JSON backup: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	importedProxies := 0
+	for _, p := range data.Proxies {
+		urlStr := strings.TrimSpace(p.URL)
+		if urlStr != "" {
+			name := strings.TrimSpace(p.Name)
+			if name == "" {
+				name = "Imported Relay"
+			}
+			if _, err := s.db.AddProxy(name, urlStr); err == nil {
+				importedProxies++
+			}
+		}
+	}
+
+	importedKeys := 0
+	for _, k := range data.APIKeys {
+		keyStr := strings.TrimSpace(k.Key)
+		name := strings.TrimSpace(k.Name)
+		if keyStr != "" {
+			if name == "" {
+				name = "Imported Key"
+			}
+			_, _ = s.db.db.Exec("INSERT OR IGNORE INTO api_keys (id, key, name, is_active, total_requests, total_tokens) VALUES (?, ?, ?, 1, 0, 0)",
+				fmt.Sprintf("key_%s", genRandomHex(6)), keyStr, name)
+			importedKeys++
+		}
+	}
+
+	if data.Strategy != "" {
+		s.db.SetSetting("strategy", data.Strategy)
+		s.pool.SetStrategy(data.Strategy)
+	}
+
+	_ = s.pool.SyncFromDB(s.db)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":          true,
+		"imported_proxies": importedProxies,
+		"imported_keys":    importedKeys,
+		"total_proxies":    s.pool.TotalNodes(),
+	})
+}
+
+// ----------------------------------------------------
+// Vercel Auto-Sync All Deployments
+// ----------------------------------------------------
+func (s *RouterServer) HandleAPIVercelSyncAll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireAuth(w, r) {
+		return
+	}
+
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	token := strings.TrimSpace(req.Token)
+	if token == "" {
+		http.Error(w, `{"error":"Vercel API token is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Query Vercel deployments API
+	vercelURL := "https://api.vercel.com/v6/deployments?limit=100"
+	vReq, _ := http.NewRequest(http.MethodGet, vercelURL, nil)
+	vReq.Header.Set("Authorization", "Bearer "+token)
+
+	vRes, err := s.httpClient.Do(vReq)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"Failed to connect to Vercel API: %v"}`, err), http.StatusInternalServerError)
+		return
+	}
+	defer vRes.Body.Close()
+
+	if vRes.StatusCode >= 400 {
+		b, _ := io.ReadAll(vRes.Body)
+		http.Error(w, fmt.Sprintf(`{"error":"Vercel API error: %s"}`, string(b)), http.StatusBadRequest)
+		return
+	}
+
+	var data struct {
+		Deployments []struct {
+			Name  string `json:"name"`
+			URL   string `json:"url"`
+			State string `json:"state"`
+		} `json:"deployments"`
+	}
+	if err := json.NewDecoder(vRes.Body).Decode(&data); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"Failed to parse Vercel response: %v"}`, err), http.StatusInternalServerError)
+		return
+	}
+
+	addedCount := 0
+	for _, d := range data.Deployments {
+		if d.URL != "" && (d.State == "READY" || d.State == "BUILDING" || d.State == "") {
+			fullURL := "https://" + d.URL
+			name := d.Name
+			if name == "" {
+				name = "Vercel Node"
+			}
+			if _, err := s.db.AddProxy(name, fullURL); err == nil {
+				addedCount++
+			}
+		}
+	}
+
+	_ = s.pool.SyncFromDB(s.db)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":           true,
+		"found_deployments": len(data.Deployments),
+		"imported_new":      addedCount,
+		"total_proxies":     s.pool.TotalNodes(),
+	})
+}
+
+// ----------------------------------------------------
 // OpenAI Endpoints (/v1/...) with API Key Enforcement
 // ----------------------------------------------------
 func (s *RouterServer) HandleV1Root(w http.ResponseWriter, r *http.Request) {
@@ -1554,6 +1736,9 @@ func main() {
 	mux.HandleFunc("/api/strategy", server.HandleAPIStrategy)
 	mux.HandleFunc("/api/logs", server.HandleAPILogs)
 	mux.HandleFunc("/api/deploy-vercel", server.HandleAPIDeployVercel)
+	mux.HandleFunc("/api/backup/export", server.HandleAPIExportBackup)
+	mux.HandleFunc("/api/backup/import", server.HandleAPIImportBackup)
+	mux.HandleFunc("/api/vercel/sync-all", server.HandleAPIVercelSyncAll)
 
 	// OpenAI API Endpoints
 	mux.HandleFunc("/v1", server.HandleV1Root)

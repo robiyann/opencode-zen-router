@@ -718,7 +718,7 @@
 
     <!-- ==================== TAB 4: ADD & IMPORT ==================== -->
     <div id="tab-add" class="tab-panel">
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px;">
         
         <!-- Add Single -->
         <div class="card">
@@ -739,14 +739,30 @@
           <button type="button" class="btn btn-sm" id="btn-bulk-import" onclick="addBulkProxies()">Batch Import to SQLite</button>
         </div>
 
+        <!-- Full Database Backup & Restore -->
+        <div class="card">
+          <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">Database Backup & Migration</div>
+          <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Export or restore all relays, API keys, and configurations (JSON format).</p>
+          
+          <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-sm" onclick="exportDatabaseBackup()" style="flex: 1;">📥 Export Backup (JSON)</button>
+            <button type="button" class="btn btn-sm" onclick="exportProxyURLs()" style="flex: 1; background: var(--bg-card-hover); border-color: var(--border);">📋 Export URLs (.txt)</button>
+          </div>
+
+          <div style="border-top: 1px solid var(--border); padding-top: 8px;">
+            <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">RESTORE FROM JSON BACKUP</label>
+            <input type="file" id="backup-file-input" accept=".json" onchange="importDatabaseBackup(event)" style="font-size: 11px; width: 100%;">
+          </div>
+        </div>
+
       </div>
     </div>
 
     <!-- ==================== TAB 5: VERCEL DEPLOYER ==================== -->
     <div id="tab-deploy" class="tab-panel">
       <div class="card">
-        <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px;">One-Click Vercel Edge Deployer</div>
-        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Automatically provision a serverless relay node on your Vercel account and register it into SQLite.</p>
+        <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px;">One-Click Vercel Edge Deployer & Auto-Sync</div>
+        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Automatically deploy new serverless edge relays, or auto-discover & import all existing Vercel deployments directly into SQLite.</p>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 12px;">
           <div>
@@ -754,15 +770,18 @@
             <input type="password" id="vercel-token" placeholder="vcp_..." style="width: 100%; font-family: var(--font-mono);">
           </div>
           <div>
-            <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 3px;">PROJECT PREFIX</label>
+            <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 3px;">PROJECT PREFIX (FOR NEW DEPLOYS)</label>
             <input type="text" id="deploy-prefix" value="zen-relay" style="width: 100%;">
           </div>
         </div>
 
-        <button class="btn btn-sm" id="btn-deploy-vercel" onclick="deployVercel()">🚀 Deploy Edge Worker</button>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="btn btn-sm" id="btn-deploy-vercel" onclick="deployVercel()">🚀 Deploy Single Worker</button>
+          <button class="btn btn-sm" id="btn-sync-all-vercel" onclick="syncAllVercelDeployments()" style="background: var(--primary); color: white;">🔄 Auto-Import All Existing Deployments</button>
+        </div>
 
-        <div id="deploy-terminal" style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-top: 12px; font-family: var(--font-mono); font-size: 11px; min-height: 100px; color: var(--text-dim);">
-          Waiting for deployment trigger...
+        <div id="deploy-terminal" style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-top: 12px; font-family: var(--font-mono); font-size: 11px; min-height: 100px; color: var(--text-dim); white-space: pre-wrap;">
+          Waiting for deployment or sync trigger...
         </div>
       </div>
     </div>
@@ -1477,6 +1496,98 @@
       } finally {
         btn.disabled = false;
         btn.innerText = '🚀 Deploy Edge Worker';
+      }
+    }
+
+    // ----------------------------------------------------
+    // Backup & Migration Functions
+    // ----------------------------------------------------
+    function exportDatabaseBackup() {
+      window.location.href = '/api/backup/export';
+      showToast('Downloading SQLite backup JSON...', 'info');
+    }
+
+    function exportProxyURLs() {
+      if (!cachedProxies || !cachedProxies.length) {
+        showToast('No proxies to export', 'error');
+        return;
+      }
+      const text = cachedProxies.map(p => p.url).join('\n');
+      const blob = new Blob([text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `zyrouter-relays-${new Date().toISOString().slice(0, 10)}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${cachedProxies.length} relay URLs!`, 'success');
+    }
+
+    async function importDatabaseBackup(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const json = JSON.parse(text);
+
+        const res = await apiFetch('/api/backup/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(json)
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast(`Backup restored! Imported ${data.imported_proxies} proxies & ${data.imported_keys} keys.`, 'success');
+          loadProxies();
+          loadAPIKeys();
+          loadStats();
+        } else {
+          showToast(data.error || 'Failed to restore backup', 'error');
+        }
+      } catch (err) {
+        showToast('Invalid backup JSON file: ' + err.message, 'error');
+      } finally {
+        event.target.value = '';
+      }
+    }
+
+    async function syncAllVercelDeployments() {
+      const token = document.getElementById('vercel-token').value.trim();
+      const term = document.getElementById('deploy-terminal');
+      const btn = document.getElementById('btn-sync-all-vercel');
+
+      if (!token) {
+        showToast('Please enter your Vercel Token', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerText = 'Scanning Vercel Account...';
+      term.innerHTML = `<div style="color: var(--cyan);">> Querying Vercel API for all deployments across account...</div>`;
+
+      try {
+        const res = await apiFetch('/api/vercel/sync-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          term.innerHTML += `<div style="color: var(--emerald); font-weight: bold;">> [SUCCESS] Found ${data.found_deployments} deployments on Vercel account!</div><div>> Successfully imported ${data.imported_new} new relays into SQLite.</div><div>> Total active pool: ${data.total_proxies} nodes.</div>`;
+          showToast(`Auto-imported ${data.imported_new} Vercel relays!`, 'success');
+          loadProxies();
+          loadStats();
+        } else {
+          term.innerHTML += `<div style="color: var(--rose);">> [FAILED] ${escapeHtml(data.error || 'Unknown error')}</div>`;
+          showToast(data.error || 'Sync failed', 'error');
+        }
+      } catch (err) {
+        term.innerHTML += `<div style="color: var(--rose);">> [ERROR] ${escapeHtml(err.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '🔄 Auto-Import All Existing Deployments';
       }
     }
 
