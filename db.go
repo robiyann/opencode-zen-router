@@ -557,13 +557,14 @@ func (d *Database) SeedDefaultProviders() {
 		VALUES ('opencode', 'OpenCode Zen Fleet', 'opencode', 'https://opencode.ai', 'public', '["public"]', 'opencode', 1, 'mimo-v2.5-free,glm-4-flash-free,deepseek-r1-free,qwen-2.5-coder-32b-free,nemotron-70b-free')`)
 
 	gensparkKey := os.Getenv("GENSPARK_API_KEY")
-	if gensparkKey == "" {
-		gensparkKey = "gsk-eyJjb2dlbl9pZCI6IjE2YjU1NDVjLTE0YjAtNDViYy04ZDVhLTljZDk3NmQ4OGM1OSIsImtleV9pZCI6IjZiMzIyNWM0LWE2NTUtNGNlNi05NjJlLWFkNDg4MTQxOTU1MCIsImN0aW1lIjoxNzg3OTA1NTk0LCJjbGF1ZGVfYmlnX21vZGVsIjpudWxsLCJjbGF1ZGVfbWlkZGxlX21vZGVsIjpudWxsLCJjbGF1ZGVfc21hbGxfbW9kZWwiOm51bGx9fD1aYahD898WbAVcM1pI3--HmiD7w9YIL34pfLrxmXnh"
+	gensparkPoolJSON := "[]"
+	if gensparkKey != "" {
+		b, _ := json.Marshal([]string{gensparkKey})
+		gensparkPoolJSON = string(b)
 	}
 
-	gensparkPoolJSON, _ := json.Marshal([]string{gensparkKey})
 	d.db.Exec(`INSERT OR IGNORE INTO providers (id, name, provider_type, base_url, api_key, api_keys_pool, model_prefix, is_active, models) 
-		VALUES ('genspark', 'Genspark AI Gateway', 'genspark', 'https://www.genspark.ai/api/llm_proxy/v1', ?, ?, 'genspark', 1, '*')`, gensparkKey, string(gensparkPoolJSON))
+		VALUES ('genspark', 'Genspark AI Gateway', 'genspark', 'https://www.genspark.ai/api/llm_proxy/v1', ?, ?, 'genspark', 1, '*')`, gensparkKey, gensparkPoolJSON)
 }
 
 func (d *Database) GetProviders() ([]Provider, error) {

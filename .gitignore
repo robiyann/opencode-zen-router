@@ -1,17 +1,34 @@
-# Binaries
+# Binaries & Builds
 *.exe
 *.exe~
 opencode-router-linux
 opencode-router
+dist/
+bin/
 
-# SQLite DB & WAL files
+# Environment & Secrets
+.env
+.env.*
+*.env
+*.pem
+*.key
+
+# SQLite Database & Backups
 *.db
 *.db-shm
 *.db-wal
+*.db-journal
 router.db*
 zyrouter.db*
+*.backup.json
 
-# OS / Editor files
+# Logs & Temporary Files
+*.log
+logs/
+temp/
+tmp/
+
+# OS & Editor files
 .DS_Store
 Thumbs.db
 .vscode/
