@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
@@ -28,6 +29,7 @@ type APIKey struct {
 	Key           string `json:"key"`
 	MaskedKey     string `json:"masked_key"`
 	Name          string `json:"name"`
+	AllowedModels string `json:"allowed_models"`
 	IsActive      bool   `json:"is_active"`
 	TotalRequests int    `json:"total_requests"`
 	TotalTokens   int    `json:"total_tokens"`
@@ -106,6 +108,7 @@ func InitDB(filepath string) (*Database, error) {
 		id TEXT PRIMARY KEY,
 		key TEXT UNIQUE NOT NULL,
 		name TEXT NOT NULL,
+		allowed_models TEXT NOT NULL DEFAULT '*',
 		is_active BOOLEAN NOT NULL DEFAULT 1,
 		total_requests INTEGER DEFAULT 0,
 		total_tokens INTEGER DEFAULT 0,
@@ -143,6 +146,7 @@ func InitDB(filepath string) (*Database, error) {
 
 	db.Exec("ALTER TABLE proxies ADD COLUMN success_count INTEGER DEFAULT 0;")
 	db.Exec("ALTER TABLE proxies ADD COLUMN error_count INTEGER DEFAULT 0;")
+	db.Exec("ALTER TABLE api_keys ADD COLUMN allowed_models TEXT DEFAULT '*';")
 
 	database := &Database{
 		db:      db,
@@ -275,7 +279,7 @@ func (d *Database) UpdateProxyStatus(urlStr string, status int, latencyMs int, i
 // API Key Management (Like 9router Ori)
 // ----------------------------------------------------
 func (d *Database) GetAPIKeys() ([]APIKey, error) {
-	rows, err := d.db.Query("SELECT id, key, name, is_active, total_requests, total_tokens, COALESCE(datetime(last_used_at), '-'), datetime(created_at) FROM api_keys ORDER BY created_at DESC")
+	rows, err := d.db.Query("SELECT id, key, name, COALESCE(allowed_models, '*'), is_active, total_requests, total_tokens, COALESCE(datetime(last_used_at), '-'), datetime(created_at) FROM api_keys ORDER BY created_at DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +288,10 @@ func (d *Database) GetAPIKeys() ([]APIKey, error) {
 	list := make([]APIKey, 0)
 	for rows.Next() {
 		var k APIKey
-		if err := rows.Scan(&k.ID, &k.Key, &k.Name, &k.IsActive, &k.TotalRequests, &k.TotalTokens, &k.LastUsedAt, &k.CreatedAt); err == nil {
+		if err := rows.Scan(&k.ID, &k.Key, &k.Name, &k.AllowedModels, &k.IsActive, &k.TotalRequests, &k.TotalTokens, &k.LastUsedAt, &k.CreatedAt); err == nil {
+			if k.AllowedModels == "" {
+				k.AllowedModels = "*"
+			}
 			if len(k.Key) > 12 {
 				k.MaskedKey = k.Key[:7] + "..." + k.Key[len(k.Key)-4:]
 			} else {
@@ -296,25 +303,38 @@ func (d *Database) GetAPIKeys() ([]APIKey, error) {
 	return list, nil
 }
 
-func (d *Database) CreateAPIKey(name string) (*APIKey, error) {
+func (d *Database) CreateAPIKey(name string, allowedModels string) (*APIKey, error) {
 	b := make([]byte, 16)
 	rand.Read(b)
 	id := fmt.Sprintf("key_%s", hex.EncodeToString(b[:6]))
 	rawKey := fmt.Sprintf("sk-zen-%s", hex.EncodeToString(b))
 
-	query := "INSERT INTO api_keys (id, key, name, is_active, total_requests, total_tokens) VALUES (?, ?, ?, 1, 0, 0)"
-	_, err := d.db.Exec(query, id, rawKey, name)
+	if strings.TrimSpace(allowedModels) == "" {
+		allowedModels = "*"
+	}
+
+	query := "INSERT INTO api_keys (id, key, name, allowed_models, is_active, total_requests, total_tokens) VALUES (?, ?, ?, ?, 1, 0, 0)"
+	_, err := d.db.Exec(query, id, rawKey, name, allowedModels)
 	if err != nil {
 		return nil, err
 	}
 
 	return &APIKey{
-		ID:        id,
-		Key:       rawKey,
-		MaskedKey: rawKey[:7] + "..." + rawKey[len(rawKey)-4:],
-		Name:      name,
-		IsActive:  true,
+		ID:            id,
+		Key:           rawKey,
+		MaskedKey:     rawKey[:7] + "..." + rawKey[len(rawKey)-4:],
+		Name:          name,
+		AllowedModels: allowedModels,
+		IsActive:      true,
 	}, nil
+}
+
+func (d *Database) UpdateAPIKeyModels(id string, allowedModels string) error {
+	if strings.TrimSpace(allowedModels) == "" {
+		allowedModels = "*"
+	}
+	_, err := d.db.Exec("UPDATE api_keys SET allowed_models = ? WHERE id = ?", allowedModels, id)
+	return err
 }
 
 func (d *Database) DeleteAPIKey(id string) error {
@@ -338,7 +358,7 @@ func (d *Database) ValidateAPIKey(keyStr string) (bool, *APIKey) {
 
 	var k APIKey
 	var activeInt int
-	err := d.db.QueryRow("SELECT id, key, name, is_active FROM api_keys WHERE key = ?", keyStr).Scan(&k.ID, &k.Key, &k.Name, &activeInt)
+	err := d.db.QueryRow("SELECT id, key, name, COALESCE(allowed_models, '*'), is_active FROM api_keys WHERE key = ?", keyStr).Scan(&k.ID, &k.Key, &k.Name, &k.AllowedModels, &activeInt)
 	if err != nil {
 		return false, nil
 	}
@@ -347,8 +367,31 @@ func (d *Database) ValidateAPIKey(keyStr string) (bool, *APIKey) {
 		return false, nil
 	}
 
+	if k.AllowedModels == "" {
+		k.AllowedModels = "*"
+	}
 	k.IsActive = true
 	return true, &k
+}
+
+func (k *APIKey) IsModelAllowed(modelName string) bool {
+	if k == nil {
+		return true
+	}
+	allowed := strings.TrimSpace(k.AllowedModels)
+	if allowed == "" || allowed == "*" || strings.ToLower(allowed) == "all" {
+		return true
+	}
+
+	parts := strings.Split(allowed, ",")
+	cleanModel := strings.ToLower(strings.TrimSpace(modelName))
+	for _, p := range parts {
+		cleanPart := strings.ToLower(strings.TrimSpace(p))
+		if cleanPart == "*" || cleanPart == "all" || cleanPart == cleanModel {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *Database) RecordAPIKeyUsage(id string, tokens int) {

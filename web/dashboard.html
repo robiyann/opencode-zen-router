@@ -478,6 +478,50 @@
     </div>
   </div>
 
+  <!-- EDIT KEY MODELS MODAL -->
+  <div id="edit-key-models-modal" class="modal-overlay">
+    <div class="modal" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Edit Allowed Models / Modes</h3>
+        <button class="btn btn-secondary btn-sm" onclick="closeModal('edit-key-models-modal')">✕</button>
+      </div>
+      <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Select which models this API key is authorized to access:</p>
+      
+      <input type="hidden" id="edit-key-id">
+      <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px;" id="edit-key-name-display"></div>
+
+      <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px;">
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; padding: 6px; border-radius: 4px; background: rgba(255,255,255,0.03);">
+          <input type="checkbox" id="edit-mod-all" onchange="toggleEditAllModels(this.checked)" checked>
+          <span style="font-weight: 700; color: #c084fc;">🌟 All Models (*)</span>
+        </label>
+        <div id="edit-specific-models" style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px;">
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+            <input type="checkbox" class="edit-model-cb" value="mimo-v2.5-free">
+            <span>mimo-v2.5-free</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+            <input type="checkbox" class="edit-model-cb" value="glm-4-flash-free">
+            <span>glm-4-flash-free</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+            <input type="checkbox" class="edit-model-cb" value="deepseek-r1-free">
+            <span>deepseek-r1-free</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+            <input type="checkbox" class="edit-model-cb" value="qwen-2.5-coder-32b-free">
+            <span>qwen-2.5-coder-32b-free</span>
+          </label>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 6px;">
+        <button class="btn btn-secondary btn-sm" onclick="closeModal('edit-key-models-modal')">Cancel</button>
+        <button class="btn btn-sm" onclick="saveKeyModelsUpdate()">Save Permissions</button>
+      </div>
+    </div>
+  </div>
+
   <!-- TOP HEADER -->
   <header>
     <div class="header-inner">
@@ -645,8 +689,8 @@
     <div id="tab-keys" class="tab-panel">
       <!-- Create Key Form -->
       <div class="card" style="margin-bottom: 12px;">
-        <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">Generate New API Key</div>
-        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Bearer token format: <code style="color: var(--cyan); font-family: var(--font-mono);">sk-zen-...</code> for OpenAI SDK clients.</p>
+        <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">Generate New API Key with Model Access Control</div>
+        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Bearer token format: <code style="color: var(--cyan); font-family: var(--font-mono);">sk-zen-...</code> with granular model-level permissions.</p>
         
         <div style="display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap;">
           <span style="font-size: 10px; color: var(--text-muted); font-weight: 700;">PRESETS:</span>
@@ -656,9 +700,37 @@
           <button type="button" class="btn btn-secondary btn-sm" onclick="setKeyNamePreset('Python SDK')">Python SDK</button>
         </div>
 
-        <form onsubmit="createAPIKey(event)" style="display: flex; gap: 8px;">
-          <input type="text" id="new-key-name" placeholder="Client Name (e.g. Cursor Laptop)" required style="flex: 1;">
-          <button type="submit" class="btn btn-sm">✨ Generate Key</button>
+        <form onsubmit="createAPIKey(event)">
+          <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+            <input type="text" id="new-key-name" placeholder="Client Name (e.g. Cursor Laptop)" required style="flex: 1;">
+            <button type="submit" class="btn btn-sm">✨ Generate Key</button>
+          </div>
+
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px;">
+            <div style="font-size: 10px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase;">Allowed Models / Modes:</div>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+              <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                <input type="checkbox" id="create-mod-all" onchange="toggleCreateAllModels(this.checked)" checked>
+                <strong style="color: #c084fc;">All Models (*)</strong>
+              </label>
+              <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                <input type="checkbox" class="create-model-cb" value="mimo-v2.5-free">
+                <span>mimo-v2.5-free</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                <input type="checkbox" class="create-model-cb" value="glm-4-flash-free">
+                <span>glm-4-flash-free</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                <input type="checkbox" class="create-model-cb" value="deepseek-r1-free">
+                <span>deepseek-r1-free</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                <input type="checkbox" class="create-model-cb" value="qwen-2.5-coder-32b-free">
+                <span>qwen-2.5-coder-32b-free</span>
+              </label>
+            </div>
+          </div>
         </form>
       </div>
 
@@ -669,6 +741,7 @@
             <tr>
               <th>Client / Name</th>
               <th>Secret Key</th>
+              <th>Allowed Models</th>
               <th>Status</th>
               <th style="text-align: right;">Requests</th>
               <th style="text-align: right;">Total Tokens</th>
@@ -960,10 +1033,76 @@
     }
 
     // ----------------------------------------------------
-    // API Keys Management
+    // API Keys Management & Model Access Control
     // ----------------------------------------------------
     function setKeyNamePreset(name) {
       document.getElementById('new-key-name').value = name;
+    }
+
+    function toggleCreateAllModels(checked) {
+      if (checked) {
+        document.querySelectorAll('.create-model-cb').forEach(cb => cb.checked = false);
+      }
+    }
+
+    document.addEventListener('change', (e) => {
+      if (e.target.classList.contains('create-model-cb') && e.target.checked) {
+        document.getElementById('create-mod-all').checked = false;
+      }
+      if (e.target.classList.contains('edit-model-cb') && e.target.checked) {
+        document.getElementById('edit-mod-all').checked = false;
+      }
+    });
+
+    function toggleEditAllModels(checked) {
+      if (checked) {
+        document.querySelectorAll('.edit-model-cb').forEach(cb => cb.checked = false);
+      }
+    }
+
+    function openEditKeyModels(id, name, allowed) {
+      document.getElementById('edit-key-id').value = id;
+      document.getElementById('edit-key-name-display').innerText = `Client: ${name}`;
+
+      const isAll = !allowed || allowed === '*' || allowed.toLowerCase() === 'all';
+      document.getElementById('edit-mod-all').checked = isAll;
+
+      const allowedList = isAll ? [] : allowed.split(',').map(s => s.trim().toLowerCase());
+      document.querySelectorAll('.edit-model-cb').forEach(cb => {
+        cb.checked = !isAll && allowedList.includes(cb.value.toLowerCase());
+      });
+
+      openModal('edit-key-models-modal');
+    }
+
+    async function saveKeyModelsUpdate() {
+      const id = document.getElementById('edit-key-id').value;
+      const isAll = document.getElementById('edit-mod-all').checked;
+
+      let allowedModels = '*';
+      if (!isAll) {
+        const checked = Array.from(document.querySelectorAll('.edit-model-cb'))
+          .filter(cb => cb.checked)
+          .map(cb => cb.value);
+        allowedModels = checked.length > 0 ? checked.join(',') : '*';
+      }
+
+      try {
+        const res = await apiFetch('/api/keys/update-models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, allowed_models: allowedModels })
+        });
+        if (res.ok) {
+          showToast('Updated allowed models for key!', 'success');
+          closeModal('edit-key-models-modal');
+          loadAPIKeys();
+        } else {
+          showToast('Failed to update permissions', 'error');
+        }
+      } catch (err) {
+        showToast('Network error', 'error');
+      }
     }
 
     async function loadAPIKeys() {
@@ -977,27 +1116,40 @@
 
         const tbody = document.getElementById('keys-table-body');
         if (!cachedKeys.length) {
-          tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 20px;">No API Keys registered.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">No API Keys registered.</td></tr>';
           return;
         }
 
-        tbody.innerHTML = cachedKeys.map(k => `
-          <tr>
-            <td><strong>${escapeHtml(k.name)}</strong></td>
-            <td>
-              <code style="color: var(--cyan); font-family: var(--font-mono); font-size: 11px;">${escapeHtml(k.masked_key)}</code>
-              <button class="btn btn-secondary btn-sm" style="margin-left: 4px; padding: 2px 6px;" onclick="copyText('${k.key}')">Copy</button>
-            </td>
-            <td><span class="badge ${k.is_active ? 'badge-green' : 'badge-red'}">${k.is_active ? 'Active' : 'Disabled'}</span></td>
-            <td style="text-align: right; font-family: var(--font-mono);">${(k.total_requests || 0).toLocaleString()}</td>
-            <td style="text-align: right; font-family: var(--font-mono); font-weight: bold; color: var(--purple);">${(k.total_tokens || 0).toLocaleString()}</td>
-            <td style="font-family: var(--font-mono); color: var(--text-muted); font-size: 11px;">${escapeHtml(k.last_used_at)}</td>
-            <td style="text-align: center;">
-              <button class="btn btn-secondary btn-sm" onclick="toggleKey('${k.id}', ${!k.is_active})">${k.is_active ? 'Disable' : 'Enable'}</button>
-              <button class="btn btn-danger btn-sm" onclick="deleteKey('${k.id}')">Del</button>
-            </td>
-          </tr>
-        `).join('');
+        tbody.innerHTML = cachedKeys.map(k => {
+          const isAll = !k.allowed_models || k.allowed_models === '*' || k.allowed_models.toLowerCase() === 'all';
+          const modelsBadge = isAll 
+            ? `<span class="badge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">All Models (*)</span>`
+            : k.allowed_models.split(',').map(m => `<span class="badge badge-green" style="font-size: 10px; margin: 1px;">${escapeHtml(m.trim())}</span>`).join(' ');
+
+          return `
+            <tr>
+              <td><strong>${escapeHtml(k.name)}</strong></td>
+              <td>
+                <code style="color: var(--cyan); font-family: var(--font-mono); font-size: 11px;">${escapeHtml(k.masked_key)}</code>
+                <button class="btn btn-secondary btn-sm" style="margin-left: 4px; padding: 2px 6px;" onclick="copyText('${k.key}')">Copy</button>
+              </td>
+              <td>
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                  ${modelsBadge}
+                  <button class="btn btn-secondary btn-sm" style="padding: 1px 5px; font-size: 10px;" onclick="openEditKeyModels('${k.id}', '${escapeHtml(k.name)}', '${escapeHtml(k.allowed_models || '*')}')" title="Edit Allowed Models">✏️</button>
+                </div>
+              </td>
+              <td><span class="badge ${k.is_active ? 'badge-green' : 'badge-red'}">${k.is_active ? 'Active' : 'Disabled'}</span></td>
+              <td style="text-align: right; font-family: var(--font-mono);">${(k.total_requests || 0).toLocaleString()}</td>
+              <td style="text-align: right; font-family: var(--font-mono); font-weight: bold; color: var(--purple);">${(k.total_tokens || 0).toLocaleString()}</td>
+              <td style="font-family: var(--font-mono); color: var(--text-muted); font-size: 11px;">${escapeHtml(k.last_used_at)}</td>
+              <td style="text-align: center;">
+                <button class="btn btn-secondary btn-sm" onclick="toggleKey('${k.id}', ${!k.is_active})">${k.is_active ? 'Disable' : 'Enable'}</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteKey('${k.id}')">Del</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
       } catch (e) {}
     }
 
@@ -1006,14 +1158,25 @@
       const name = document.getElementById('new-key-name').value.trim();
       if (!name) return;
 
+      const isAll = document.getElementById('create-mod-all').checked;
+      let allowedModels = '*';
+      if (!isAll) {
+        const checked = Array.from(document.querySelectorAll('.create-model-cb'))
+          .filter(cb => cb.checked)
+          .map(cb => cb.value);
+        allowedModels = checked.length > 0 ? checked.join(',') : '*';
+      }
+
       try {
         const res = await apiFetch('/api/keys', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name })
+          body: JSON.stringify({ name, allowed_models: allowedModels })
         });
         const key = await res.json();
         document.getElementById('new-key-name').value = '';
+        document.getElementById('create-mod-all').checked = true;
+        document.querySelectorAll('.create-model-cb').forEach(cb => cb.checked = false);
         loadAPIKeys();
 
         document.getElementById('modal-key-val').innerText = key.key;

@@ -673,7 +673,8 @@ func (s *RouterServer) HandleAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPost:
 		var req struct {
-			Name string `json:"name"`
+			Name          string `json:"name"`
+			AllowedModels string `json:"allowed_models"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -683,8 +684,12 @@ func (s *RouterServer) HandleAPIKeys(w http.ResponseWriter, r *http.Request) {
 		if name == "" {
 			name = "API Key"
 		}
+		allowed := strings.TrimSpace(req.AllowedModels)
+		if allowed == "" {
+			allowed = "*"
+		}
 
-		apiKey, err := s.db.CreateAPIKey(name)
+		apiKey, err := s.db.CreateAPIKey(name, allowed)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -709,6 +714,38 @@ func (s *RouterServer) HandleAPIKeys(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (s *RouterServer) HandleAPIUpdateKeyModels(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if !s.requireAuth(w, r) {
+		return
+	}
+
+	var req struct {
+		ID            string `json:"id"`
+		AllowedModels string `json:"allowed_models"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.ID == "" {
+		http.Error(w, `{"error":"ID is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	if err := s.db.UpdateAPIKeyModels(req.ID, req.AllowedModels); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "allowed_models": req.AllowedModels})
 }
 
 func (s *RouterServer) HandleAPIToggleKey(w http.ResponseWriter, r *http.Request) {
@@ -1414,7 +1451,7 @@ func (s *RouterServer) HandleModels(w http.ResponseWriter, r *http.Request) {
 
 	// Validate API Key if client provided one
 	authKey := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	valid, _ := s.db.ValidateAPIKey(authKey)
+	valid, keyObj := s.db.ValidateAPIKey(authKey)
 	if !valid {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
@@ -1444,6 +1481,27 @@ func (s *RouterServer) HandleModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
+
+	if keyObj != nil && keyObj.AllowedModels != "*" && strings.ToLower(keyObj.AllowedModels) != "all" {
+		var modelsResp struct {
+			Object string                   `json:"object"`
+			Data   []map[string]interface{} `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&modelsResp); err == nil {
+			filtered := make([]map[string]interface{}, 0)
+			for _, m := range modelsResp.Data {
+				mID, _ := m["id"].(string)
+				if keyObj.IsModelAllowed(mID) {
+					filtered = append(filtered, m)
+				}
+			}
+			modelsResp.Data = filtered
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(modelsResp)
+			return
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
@@ -1487,6 +1545,15 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 	modelName, _ := reqBody["model"].(string)
 	if modelName == "" {
 		modelName = "unknown"
+	}
+
+	// Model Permission Enforcement per API Key
+	if keyObj != nil && !keyObj.IsModelAllowed(modelName) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		errResp := fmt.Sprintf(`{"error":{"message":"Model '%s' is not permitted for this API Key. Allowed models: [%s]","type":"permission_error","code":"model_not_allowed"}}`, modelName, keyObj.AllowedModels)
+		w.Write([]byte(errResp))
+		return
 	}
 
 	// 1. Check Prompt Cache (0ms Instant Return)
@@ -1793,6 +1860,7 @@ func main() {
 	// API Key Management API
 	mux.HandleFunc("/api/keys", server.HandleAPIKeys)
 	mux.HandleFunc("/api/keys/toggle", server.HandleAPIToggleKey)
+	mux.HandleFunc("/api/keys/update-models", server.HandleAPIUpdateKeyModels)
 
 	// Live Event Stream for Dashboard
 	mux.HandleFunc("/api/events", server.HandleLiveEvents)
