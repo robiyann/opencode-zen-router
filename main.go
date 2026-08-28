@@ -32,7 +32,7 @@ const (
 	DefaultPort    = "8080"
 	DefaultDBFile  = "zyrouter.db"
 	CooldownPeriod = 45 * time.Second
-	MaxRetries     = 15
+	MaxRetries     = 3
 	VercelAPI      = "https://api.vercel.com"
 )
 
