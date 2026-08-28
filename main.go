@@ -2111,7 +2111,7 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Emergency Fallback: If all proxies in pool failed or returned 404, route directly to OpenCode Zen API
-	log.Printf("[Direct OpenCode Fallback] Attempting direct route to OpenCode Zen Gateway for model '%s'...", cleanModelName)
+	log.Printf("[Direct OpenCode Fallback] Relays failed (%v), routing directly to OpenCode Zen Gateway for model '%s'...", lastErr, cleanModelName)
 	directOpenCodeProvider := &Provider{
 		ID:           "opencode_direct",
 		Name:         "OpenCode Zen Direct Gateway",
