@@ -558,6 +558,50 @@
     </div>
   </div>
 
+  <!-- EDIT PROVIDER MODAL -->
+  <div id="edit-provider-modal" class="modal-overlay">
+    <div class="modal" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Edit Provider & API Key</h3>
+        <button class="btn btn-secondary btn-sm" onclick="closeModal('edit-provider-modal')">✕</button>
+      </div>
+      <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Update API key, endpoint, or models filter for this upstream provider:</p>
+      
+      <form onsubmit="submitEditProvider(event)" style="display: flex; flex-direction: column; gap: 10px;">
+        <input type="hidden" id="edit-prov-id">
+        <div>
+          <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 3px;">PROVIDER NAME</label>
+          <input type="text" id="edit-prov-name" required style="width: 100%;">
+        </div>
+        <div>
+          <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 3px;">PROVIDER TYPE</label>
+          <select id="edit-prov-type" style="width: 100%; padding: 6px 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; color: var(--text);">
+            <option value="genspark">Genspark AI Proxy</option>
+            <option value="openai">OpenAI Compatible Gateway</option>
+            <option value="opencode">OpenCode Fleet</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 3px;">BASE URL ENDPOINT</label>
+          <input type="url" id="edit-prov-url" required style="width: 100%;">
+        </div>
+        <div>
+          <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 3px;">API KEY (SECRET TOKEN)</label>
+          <input type="text" id="edit-prov-key" placeholder="Enter API Key (e.g. gsk-...)" style="width: 100%; font-family: var(--font-mono);" required>
+        </div>
+        <div>
+          <label style="font-size: 10px; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 3px;">MODELS FILTER</label>
+          <input type="text" id="edit-prov-models" placeholder="* for all models, or comma-separated" style="width: 100%;">
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('edit-provider-modal')">Cancel</button>
+          <button type="submit" class="btn btn-sm">💾 Update Provider Key</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- TOP HEADER -->
   <header>
     <div class="header-inner">
@@ -1972,16 +2016,63 @@
             <td><strong>${escapeHtml(p.name)}</strong></td>
             <td><span class="badge ${p.provider_type === 'genspark' ? 'badge-yellow' : (p.provider_type === 'opencode' ? 'badge-blue' : 'badge-green')}">${escapeHtml(p.provider_type.toUpperCase())}</span></td>
             <td><code style="color: var(--cyan); font-family: var(--font-mono); font-size: 11px;">${escapeHtml(p.base_url)}</code></td>
-            <td><code style="color: var(--text-muted); font-family: var(--font-mono); font-size: 11px;">${escapeHtml(p.masked_key)}</code></td>
+            <td>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <code style="color: var(--text-muted); font-family: var(--font-mono); font-size: 11px;">${escapeHtml(p.masked_key)}</code>
+                <button class="btn btn-secondary btn-sm" style="padding: 2px 6px; font-size: 10px;" onclick="openEditProvider('${p.id}')">✏️ Edit Key</button>
+              </div>
+            </td>
             <td><span class="badge" style="font-size: 10px; background: rgba(255,255,255,0.05);">${escapeHtml(p.models || '*')}</span></td>
             <td><span class="badge ${p.is_active ? 'badge-green' : 'badge-red'}">${p.is_active ? 'Active' : 'Disabled'}</span></td>
             <td style="text-align: center;">
+              <button class="btn btn-secondary btn-sm" onclick="openEditProvider('${p.id}')">✏️ Config</button>
               <button class="btn btn-secondary btn-sm" onclick="toggleProvider('${p.id}', ${!p.is_active})">${p.is_active ? 'Disable' : 'Enable'}</button>
               ${p.id !== 'opencode' ? `<button class="btn btn-danger btn-sm" onclick="deleteProvider('${p.id}')">Del</button>` : ''}
             </td>
           </tr>
         `).join('');
       } catch (e) {}
+    }
+
+    function openEditProvider(id) {
+      const p = cachedProviders.find(x => x.id === id);
+      if (!p) return;
+
+      document.getElementById('edit-prov-id').value = p.id;
+      document.getElementById('edit-prov-name').value = p.name;
+      document.getElementById('edit-prov-type').value = p.provider_type;
+      document.getElementById('edit-prov-url').value = p.base_url;
+      document.getElementById('edit-prov-key').value = p.api_key;
+      document.getElementById('edit-prov-models').value = p.models || '*';
+
+      openModal('edit-provider-modal');
+    }
+
+    async function submitEditProvider(e) {
+      e.preventDefault();
+      const id = document.getElementById('edit-prov-id').value;
+      const name = document.getElementById('edit-prov-name').value.trim();
+      const provider_type = document.getElementById('edit-prov-type').value;
+      const base_url = document.getElementById('edit-prov-url').value.trim();
+      const api_key = document.getElementById('edit-prov-key').value.trim();
+      const models = document.getElementById('edit-prov-models').value.trim() || '*';
+
+      try {
+        const res = await apiFetch('/api/providers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, name, provider_type, base_url, api_key, models })
+        });
+        if (res.ok) {
+          showToast(`Updated API Key for ${name}!`, 'success');
+          closeModal('edit-provider-modal');
+          loadProviders();
+        } else {
+          showToast('Failed to update provider', 'error');
+        }
+      } catch (err) {
+        showToast('Network error', 'error');
+      }
     }
 
     async function saveProviderForm(e) {
