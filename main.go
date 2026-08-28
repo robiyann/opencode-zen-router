@@ -1467,7 +1467,9 @@ func (s *RouterServer) HandleAPIExportBackup(w http.ResponseWriter, r *http.Requ
 		"exported_at": time.Now().UTC().Format(time.RFC3339),
 		"strategy":    strategy,
 		"providers":   providers,
+		"nodes":       proxies,
 		"proxies":     proxies,
+		"relays":      proxies,
 		"api_keys":    keys,
 	}
 
@@ -1491,10 +1493,18 @@ func (s *RouterServer) HandleAPIImportBackup(w http.ResponseWriter, r *http.Requ
 	var data struct {
 		Strategy  string     `json:"strategy"`
 		Providers []Provider `json:"providers"`
-		Proxies   []struct {
+		Nodes     []struct {
+			Name string `json:"name"`
+			URL  string `json:"url"`
+		} `json:"nodes"`
+		Proxies []struct {
 			Name string `json:"name"`
 			URL  string `json:"url"`
 		} `json:"proxies"`
+		Relays []struct {
+			Name string `json:"name"`
+			URL  string `json:"url"`
+		} `json:"relays"`
 		APIKeys []struct {
 			Key           string `json:"key"`
 			Name          string `json:"name"`
@@ -1519,11 +1529,16 @@ func (s *RouterServer) HandleAPIImportBackup(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	// 2. Restore Relays / Proxies
+	// 2. Restore Relays / Proxies / Nodes
 	importedProxies := 0
-	for _, p := range data.Proxies {
+	allNodes := append(data.Proxies, data.Nodes...)
+	allNodes = append(allNodes, data.Relays...)
+	seenURLs := make(map[string]bool)
+
+	for _, p := range allNodes {
 		urlStr := strings.TrimSpace(p.URL)
-		if urlStr != "" {
+		if urlStr != "" && !seenURLs[urlStr] {
+			seenURLs[urlStr] = true
 			name := strings.TrimSpace(p.Name)
 			if name == "" {
 				name = "Imported Relay"
