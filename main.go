@@ -1904,7 +1904,7 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 		bodyBytes, _ = json.Marshal(reqBody)
 	}
 
-	if provider != nil && provider.ProviderType != "opencode" {
+	if provider != nil {
 		s.handleDirectProviderCompletion(w, r, provider, cleanModelName, bodyBytes, isStream, keyObj)
 		return
 	}
