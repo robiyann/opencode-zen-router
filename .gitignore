@@ -1,7 +1,6 @@
 # Binaries & Builds
 *.exe
 *.exe~
-opencode-router-linux
 opencode-router
 dist/
 bin/
