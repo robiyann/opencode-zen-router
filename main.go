@@ -777,6 +777,159 @@ func (s *RouterServer) HandleAPIToggleKey(w http.ResponseWriter, r *http.Request
 }
 
 // ----------------------------------------------------
+// Multi-Provider Management API
+// ----------------------------------------------------
+func (s *RouterServer) HandleAPIProviders(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if !s.requireAuth(w, r) {
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		providers, err := s.db.GetProviders()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(providers)
+
+	case http.MethodPost:
+		var p Provider
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		p.Name = strings.TrimSpace(p.Name)
+		p.BaseURL = strings.TrimSpace(p.BaseURL)
+		p.APIKey = strings.TrimSpace(p.APIKey)
+		if p.Name == "" || p.BaseURL == "" {
+			http.Error(w, `{"error":"Name and Base URL are required"}`, http.StatusBadRequest)
+			return
+		}
+		if p.ProviderType == "" {
+			p.ProviderType = "openai"
+		}
+		p.IsActive = true
+		if err := s.db.SaveProvider(&p); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "id": p.ID})
+
+	case http.MethodDelete:
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			http.Error(w, "ID is required", http.StatusBadRequest)
+			return
+		}
+		if id == "opencode" {
+			http.Error(w, "Cannot delete default OpenCode provider", http.StatusBadRequest)
+			return
+		}
+		if err := s.db.DeleteProvider(id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *RouterServer) HandleAPIToggleProvider(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if !s.requireAuth(w, r) {
+		return
+	}
+
+	var req struct {
+		ID       string `json:"id"`
+		IsActive bool   `json:"is_active"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.db.ToggleProvider(req.ID, req.IsActive); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"is_active": req.IsActive})
+}
+
+func (s *RouterServer) ResolveProviderForModel(modelName string) *Provider {
+	activeProviders, err := s.db.GetActiveProviders()
+	if err != nil || len(activeProviders) == 0 {
+		return nil
+	}
+
+	cleanModel := strings.ToLower(strings.TrimSpace(modelName))
+
+	// 1. Check explicit model matching list
+	for _, p := range activeProviders {
+		if p.Models != "*" && p.Models != "" && p.Models != "all" {
+			parts := strings.Split(p.Models, ",")
+			for _, part := range parts {
+				if strings.ToLower(strings.TrimSpace(part)) == cleanModel {
+					return &p
+				}
+			}
+		}
+	}
+
+	// 2. Pattern-based routing for Genspark vs OpenCode
+	isGensparkModel := strings.HasPrefix(cleanModel, "gpt-") ||
+		strings.HasPrefix(cleanModel, "claude-") ||
+		strings.HasPrefix(cleanModel, "deep-seek-") ||
+		strings.HasPrefix(cleanModel, "deepseek-v4") ||
+		strings.HasPrefix(cleanModel, "kimi-") ||
+		strings.HasPrefix(cleanModel, "glm-5") ||
+		strings.HasPrefix(cleanModel, "minimax-") ||
+		strings.HasPrefix(cleanModel, "grok-") ||
+		strings.HasPrefix(cleanModel, "solar-") ||
+		strings.HasPrefix(cleanModel, "trinity-")
+
+	if isGensparkModel {
+		for _, p := range activeProviders {
+			if p.ProviderType == "genspark" {
+				return &p
+			}
+		}
+	}
+
+	// 3. Fallback to OpenCode fleet if model is free or default
+	for _, p := range activeProviders {
+		if p.ProviderType == "opencode" {
+			return &p
+		}
+	}
+
+	// 4. Any active wildcard provider
+	for _, p := range activeProviders {
+		if p.Models == "*" || p.Models == "all" {
+			return &p
+		}
+	}
+
+	return nil
+}
+
+// ----------------------------------------------------
 // SSE Event Stream & Admin Endpoints
 // ----------------------------------------------------
 func (s *RouterServer) HandleLiveEvents(w http.ResponseWriter, r *http.Request) {
@@ -1459,53 +1612,61 @@ func (s *RouterServer) HandleModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	node, _ := s.pool.Pick("")
-	if node == nil {
-		http.Error(w, `{"error":"No proxy available in pool"}`, http.StatusServiceUnavailable)
-		return
-	}
+	modelMap := make(map[string]map[string]interface{})
 
-	targetURL := fmt.Sprintf("%s/v1/models", node.RawURL)
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	req.Header.Set("Authorization", "Bearer public")
-	req.Header.Set("x-opencode-client", "desktop")
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"Upstream proxy unreachable: %s"}`, err.Error()), http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	if keyObj != nil && keyObj.AllowedModels != "*" && strings.ToLower(keyObj.AllowedModels) != "all" {
-		var modelsResp struct {
-			Object string                   `json:"object"`
-			Data   []map[string]interface{} `json:"data"`
+	// 1. Default OpenCode models
+	defaultOpenCodeModels := []string{"mimo-v2.5-free", "glm-4-flash-free", "deepseek-r1-free", "qwen-2.5-coder-32b-free", "nemotron-70b-free"}
+	for _, m := range defaultOpenCodeModels {
+		modelMap[m] = map[string]interface{}{
+			"id":       m,
+			"object":   "model",
+			"created":  time.Now().Unix(),
+			"owned_by": "opencode-zen",
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&modelsResp); err == nil {
-			filtered := make([]map[string]interface{}, 0)
-			for _, m := range modelsResp.Data {
-				mID, _ := m["id"].(string)
-				if keyObj.IsModelAllowed(mID) {
-					filtered = append(filtered, m)
+	}
+
+	// 2. Fetch models from active providers (e.g. Genspark AI)
+	activeProviders, _ := s.db.GetActiveProviders()
+	for _, p := range activeProviders {
+		if p.ProviderType != "opencode" && p.BaseURL != "" {
+			targetURL := strings.TrimRight(p.BaseURL, "/") + "/models"
+			req, err := http.NewRequest(http.MethodGet, targetURL, nil)
+			if err == nil {
+				req.Header.Set("Authorization", "Bearer "+p.APIKey)
+				client := &http.Client{Timeout: 5 * time.Second}
+				resp, err := client.Do(req)
+				if err == nil && resp.StatusCode == 200 {
+					var pModels struct {
+						Data []map[string]interface{} `json:"data"`
+					}
+					if err := json.NewDecoder(resp.Body).Decode(&pModels); err == nil {
+						for _, item := range pModels.Data {
+							if id, ok := item["id"].(string); ok && id != "" {
+								item["owned_by"] = p.Name
+								modelMap[id] = item
+							}
+						}
+					}
+					resp.Body.Close()
 				}
 			}
-			modelsResp.Data = filtered
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(modelsResp)
-			return
+		}
+	}
+
+	// Filter models based on API Key permissions
+	finalList := make([]map[string]interface{}, 0)
+	for _, item := range modelMap {
+		mID, _ := item["id"].(string)
+		if keyObj == nil || keyObj.IsModelAllowed(mID) {
+			finalList = append(finalList, item)
 		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"object": "list",
+		"data":   finalList,
+	})
 }
 
 func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
@@ -1569,7 +1730,14 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// 2. Strict Model Fidelity (Keep exact model requested by developer)
+	// 2. Multi-Provider Router Resolution (e.g. Genspark AI Gateway vs OpenCode Zen Relays)
+	provider := s.ResolveProviderForModel(modelName)
+	if provider != nil && provider.ProviderType != "opencode" {
+		s.handleDirectProviderCompletion(w, r, provider, modelName, bodyBytes, isStream, keyObj)
+		return
+	}
+
+	// 3. Strict Model Fidelity (Keep exact model requested by developer)
 	s.pool.inFlight.Add(1)
 	defer s.pool.inFlight.Add(-1)
 
@@ -1773,6 +1941,145 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 	http.Error(w, fmt.Sprintf(`{"error":"All proxy relays failed or rate-limited for model %s: %v"}`, modelName, lastErr), http.StatusBadGateway)
 }
 
+func (s *RouterServer) handleDirectProviderCompletion(w http.ResponseWriter, r *http.Request, provider *Provider, modelName string, bodyBytes []byte, isStream bool, keyObj *APIKey) {
+	s.pool.inFlight.Add(1)
+	defer s.pool.inFlight.Add(-1)
+
+	s.hub.Broadcast("request_start", map[string]interface{}{
+		"model":     modelName,
+		"is_stream": isStream,
+		"in_flight": s.pool.inFlight.Load(),
+	})
+
+	targetURL := strings.TrimRight(provider.BaseURL, "/") + "/chat/completions"
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, targetURL, bytes.NewReader(bodyBytes))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	req.Header.Set("Authorization", "Bearer "+provider.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+	if isStream {
+		req.Header.Set("Accept", "text/event-stream")
+	} else {
+		req.Header.Set("Accept", "application/json")
+	}
+
+	t0 := time.Now()
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"Provider %s unreachable: %s"}`, provider.Name, err.Error()), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	duration := time.Since(t0)
+	latencyMs := int(duration.Milliseconds())
+	log.Printf("[Provider Routed] %s -> %s (%d OK) [%v] (Model: %s)", r.RemoteAddr, provider.Name, resp.StatusCode, duration, modelName)
+
+	s.pool.totalRouted.Add(1)
+
+	for k, v := range resp.Header {
+		w.Header()[k] = v
+	}
+	w.Header().Set("x-router-provider", provider.Name)
+	w.Header().Set("x-router-cache", "MISS")
+	w.WriteHeader(resp.StatusCode)
+
+	keyID := ""
+	if keyObj != nil {
+		keyID = keyObj.ID
+	}
+
+	promptTokens := 0
+	completionTokens := 0
+	totalTokens := 0
+
+	if isStream {
+		flusher, canFlush := w.(http.Flusher)
+		buf := make([]byte, 1024)
+		var streamBuffer bytes.Buffer
+
+		for {
+			n, readErr := resp.Body.Read(buf)
+			if n > 0 {
+				w.Write(buf[:n])
+				streamBuffer.Write(buf[:n])
+				if canFlush {
+					flusher.Flush()
+				}
+			}
+			if readErr != nil {
+				break
+			}
+		}
+
+		rawStream := streamBuffer.String()
+		lines := strings.Split(rawStream, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "data: ") && !strings.Contains(line, "[DONE]") {
+				var parsed struct {
+					Usage struct {
+						PromptTokens     int `json:"prompt_tokens"`
+						CompletionTokens int `json:"completion_tokens"`
+						TotalTokens      int `json:"total_tokens"`
+					} `json:"usage"`
+				}
+				jsonStr := strings.TrimPrefix(line, "data: ")
+				if json.Unmarshal([]byte(jsonStr), &parsed) == nil && parsed.Usage.TotalTokens > 0 {
+					promptTokens = parsed.Usage.PromptTokens
+					completionTokens = parsed.Usage.CompletionTokens
+					totalTokens = parsed.Usage.TotalTokens
+				}
+			}
+		}
+
+		if totalTokens == 0 {
+			completionTokens = len(rawStream) / 4
+			promptTokens = len(bodyBytes) / 4
+			totalTokens = promptTokens + completionTokens
+		}
+	} else {
+		respBodyBytes, _ := io.ReadAll(resp.Body)
+		w.Write(respBodyBytes)
+
+		var parsedResp struct {
+			Usage struct {
+				PromptTokens     int `json:"prompt_tokens"`
+				CompletionTokens int `json:"completion_tokens"`
+				TotalTokens      int `json:"total_tokens"`
+			} `json:"usage"`
+		}
+		if json.Unmarshal(respBodyBytes, &parsedResp) == nil && parsedResp.Usage.TotalTokens > 0 {
+			promptTokens = parsedResp.Usage.PromptTokens
+			completionTokens = parsedResp.Usage.CompletionTokens
+			totalTokens = parsedResp.Usage.TotalTokens
+		} else {
+			completionTokens = len(respBodyBytes) / 4
+			promptTokens = len(bodyBytes) / 4
+			totalTokens = promptTokens + completionTokens
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			cacheKey := fmt.Sprintf("%x", sha256.Sum256(bodyBytes))
+			s.promptCache.Set(cacheKey, respBodyBytes, w.Header())
+		}
+	}
+
+	s.db.LogUsage(modelName, provider.Name, resp.StatusCode, latencyMs, promptTokens, completionTokens, totalTokens, isStream, keyID)
+
+	s.hub.Broadcast("request_done", map[string]interface{}{
+		"model":      modelName,
+		"proxy":      provider.Name,
+		"latency_ms": latencyMs,
+		"tokens":     totalTokens,
+		"status":     resp.StatusCode,
+		"in_flight":  s.pool.inFlight.Load(),
+	})
+}
+
 // GetDefaultDBPath resolves the database path matching 9router ori (%APPDATA%\zyrouter or ~/.zyrouter), named zyrouter.db
 func GetDefaultDBPath() string {
 	if explicit := os.Getenv("DB_FILE"); explicit != "" {
@@ -1861,6 +2168,10 @@ func main() {
 	mux.HandleFunc("/api/keys", server.HandleAPIKeys)
 	mux.HandleFunc("/api/keys/toggle", server.HandleAPIToggleKey)
 	mux.HandleFunc("/api/keys/update-models", server.HandleAPIUpdateKeyModels)
+
+	// Multi-Provider Management API
+	mux.HandleFunc("/api/providers", server.HandleAPIProviders)
+	mux.HandleFunc("/api/providers/toggle", server.HandleAPIToggleProvider)
 
 	// Live Event Stream for Dashboard
 	mux.HandleFunc("/api/events", server.HandleLiveEvents)

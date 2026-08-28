@@ -24,6 +24,18 @@ type DBProxy struct {
 	CreatedAt    string `json:"created_at"`
 }
 
+type Provider struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	ProviderType string `json:"provider_type"` // 'opencode', 'genspark', 'openai'
+	BaseURL      string `json:"base_url"`
+	APIKey       string `json:"api_key"`
+	MaskedKey    string `json:"masked_key"`
+	IsActive     bool   `json:"is_active"`
+	Models       string `json:"models"` // '*' or comma-separated list
+	CreatedAt    string `json:"created_at"`
+}
+
 type APIKey struct {
 	ID            string `json:"id"`
 	Key           string `json:"key"`
@@ -138,6 +150,17 @@ func InitDB(filepath string) (*Database, error) {
 		key TEXT PRIMARY KEY,
 		value TEXT NOT NULL
 	);
+
+	CREATE TABLE IF NOT EXISTS providers (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		provider_type TEXT NOT NULL,
+		base_url TEXT NOT NULL,
+		api_key TEXT NOT NULL,
+		is_active BOOLEAN NOT NULL DEFAULT 1,
+		models TEXT DEFAULT '*',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
 	`
 
 	if _, err := db.Exec(createTableQuery); err != nil {
@@ -165,6 +188,9 @@ func InitDB(filepath string) (*Database, error) {
 		database.SetSetting("admin_password_hash", string(hashed))
 		log.Printf("[Auth] Default admin password set: admin123 (Change in settings)")
 	}
+
+	// Seed default providers (OpenCode Zen & Genspark AI)
+	database.SeedDefaultProviders()
 
 	// Seed default proxy if empty
 	var count int
@@ -497,5 +523,84 @@ func (d *Database) GetSetting(key, defVal string) string {
 
 func (d *Database) SetSetting(key, val string) error {
 	_, err := d.db.Exec("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, val)
+	return err
+}
+
+// ----------------------------------------------------
+// Multi-Provider Management
+// ----------------------------------------------------
+func (d *Database) SeedDefaultProviders() {
+	d.db.Exec(`INSERT OR IGNORE INTO providers (id, name, provider_type, base_url, api_key, is_active, models) 
+		VALUES ('opencode', 'OpenCode Zen Fleet', 'opencode', 'https://opencode.ai', 'public', 1, 'mimo-v2.5-free,glm-4-flash-free,deepseek-r1-free,qwen-2.5-coder-32b-free,nemotron-70b-free')`)
+
+	d.db.Exec(`INSERT OR IGNORE INTO providers (id, name, provider_type, base_url, api_key, is_active, models) 
+		VALUES ('genspark', 'Genspark AI Gateway', 'genspark', 'https://www.genspark.ai/api/llm_proxy/v1', 'gsk-eyJjb2dlbl9pZCI6IjE2YjU1NDVjLTE0YjAtNDViYy04ZDVhLTljZDk3NmQ4OGM1OSIsImtleV9pZCI6IjZiMzIyNWM0LWE2NTUtNGNlNi05NjJlLWFkNDg4MTQxOTU1MCIsImN0aW1lIjoxNzg3OTA1NTk0LCJjbGF1ZGVfYmlnX21vZGVsIjpudWxsLCJjbGF1ZGVfbWlkZGxlX21vZGVsIjpudWxsLCJjbGF1ZGVfc21hbGxfbW9kZWwiOm51bGx9fD1aYahD898WbAVcM1pI3--HmiD7w9YIL34pfLrxmXnh', 1, '*')`)
+}
+
+func (d *Database) GetProviders() ([]Provider, error) {
+	rows, err := d.db.Query("SELECT id, name, provider_type, base_url, api_key, is_active, COALESCE(models, '*'), datetime(created_at) FROM providers ORDER BY created_at ASC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	list := make([]Provider, 0)
+	for rows.Next() {
+		var p Provider
+		if err := rows.Scan(&p.ID, &p.Name, &p.ProviderType, &p.BaseURL, &p.APIKey, &p.IsActive, &p.Models, &p.CreatedAt); err == nil {
+			if len(p.APIKey) > 12 {
+				p.MaskedKey = p.APIKey[:7] + "..." + p.APIKey[len(p.APIKey)-4:]
+			} else {
+				p.MaskedKey = p.APIKey
+			}
+			list = append(list, p)
+		}
+	}
+	return list, nil
+}
+
+func (d *Database) GetActiveProviders() ([]Provider, error) {
+	all, err := d.GetProviders()
+	if err != nil {
+		return nil, err
+	}
+	active := make([]Provider, 0)
+	for _, p := range all {
+		if p.IsActive {
+			active = append(active, p)
+		}
+	}
+	return active, nil
+}
+
+func (d *Database) SaveProvider(p *Provider) error {
+	if p.ID == "" {
+		b := make([]byte, 6)
+		rand.Read(b)
+		p.ID = fmt.Sprintf("prov_%s", hex.EncodeToString(b))
+	}
+	if p.Models == "" {
+		p.Models = "*"
+	}
+	query := `INSERT INTO providers (id, name, provider_type, base_url, api_key, is_active, models) 
+		VALUES (?, ?, ?, ?, ?, ?, ?) 
+		ON CONFLICT(id) DO UPDATE SET 
+			name = excluded.name, 
+			provider_type = excluded.provider_type, 
+			base_url = excluded.base_url, 
+			api_key = excluded.api_key, 
+			is_active = excluded.is_active, 
+			models = excluded.models`
+	_, err := d.db.Exec(query, p.ID, p.Name, p.ProviderType, p.BaseURL, p.APIKey, p.IsActive, p.Models)
+	return err
+}
+
+func (d *Database) ToggleProvider(id string, isActive bool) error {
+	_, err := d.db.Exec("UPDATE providers SET is_active = ? WHERE id = ?", isActive, id)
+	return err
+}
+
+func (d *Database) DeleteProvider(id string) error {
+	_, err := d.db.Exec("DELETE FROM providers WHERE id = ?", id)
 	return err
 }

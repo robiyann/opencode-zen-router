@@ -658,6 +658,12 @@
         <span>Vercel Deployer</span>
       </button>
 
+      <button class="tab-btn" onclick="switchTab('tab-providers')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+        <span>AI Providers</span>
+        <span class="tab-badge" id="badge-providers" style="background: rgba(168, 85, 247, 0.2); color: #c084fc;">2</span>
+      </button>
+
       <button class="tab-btn" onclick="switchTab('tab-docs')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
         <span>Client Integration</span>
@@ -859,7 +865,54 @@
       </div>
     </div>
 
-    <!-- ==================== TAB 6: CLIENT INTEGRATION ==================== -->
+    <!-- ==================== TAB 6: AI PROVIDERS ==================== -->
+    <div id="tab-providers" class="tab-panel">
+      <!-- Connect Provider Form -->
+      <div class="card" style="margin-bottom: 12px;">
+        <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">Connect New AI Provider</div>
+        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Route models dynamically through Genspark AI, OpenCode Zen, or any custom OpenAI-compatible API gateway.</p>
+        
+        <div style="display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;">
+          <span style="font-size: 10px; color: var(--text-muted); font-weight: 700;">PRESETS:</span>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="setProviderPreset('genspark')">⚡ Genspark AI</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="setProviderPreset('openai')">🤖 OpenAI Direct</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="setProviderPreset('groq')">⚡ Groq Cloud</button>
+        </div>
+
+        <form onsubmit="saveProviderForm(event)" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin-bottom: 8px;">
+          <input type="text" id="prov-name" placeholder="Provider Name (e.g. Genspark AI)" required>
+          <select id="prov-type" style="padding: 6px 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; color: var(--text);">
+            <option value="genspark">Genspark AI Proxy</option>
+            <option value="openai">OpenAI Compatible Gateway</option>
+            <option value="opencode">OpenCode Fleet</option>
+          </select>
+          <input type="url" id="prov-url" placeholder="https://www.genspark.ai/api/llm_proxy/v1" required>
+          <input type="password" id="prov-key" placeholder="API Key (e.g. gsk-...)" style="font-family: var(--font-mono);" required>
+          <input type="text" id="prov-models" placeholder="Models Filter (* for all, or comma-separated)" value="*" style="grid-column: 1 / -1;">
+          <button type="submit" class="btn btn-sm" style="grid-column: 1 / -1;">✨ Save & Activate Provider</button>
+        </form>
+      </div>
+
+      <!-- Providers Table -->
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Provider / Name</th>
+              <th>Type</th>
+              <th>Base Endpoint</th>
+              <th>API Key</th>
+              <th>Models</th>
+              <th>Status</th>
+              <th style="text-align: center;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="providers-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 7: CLIENT INTEGRATION ==================== -->
     <div id="tab-docs" class="tab-panel">
       <div class="card">
         <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px;">Client & IDE Setup Guide</div>
@@ -1763,6 +1816,112 @@
       }
     }
 
+    // ----------------------------------------------------
+    // AI Providers Management
+    // ----------------------------------------------------
+    let cachedProviders = [];
+
+    function setProviderPreset(type) {
+      if (type === 'genspark') {
+        document.getElementById('prov-name').value = 'Genspark AI';
+        document.getElementById('prov-type').value = 'genspark';
+        document.getElementById('prov-url').value = 'https://www.genspark.ai/api/llm_proxy/v1';
+        document.getElementById('prov-key').value = '';
+        document.getElementById('prov-models').value = '*';
+      } else if (type === 'openai') {
+        document.getElementById('prov-name').value = 'OpenAI Official';
+        document.getElementById('prov-type').value = 'openai';
+        document.getElementById('prov-url').value = 'https://api.openai.com/v1';
+        document.getElementById('prov-key').value = '';
+        document.getElementById('prov-models').value = 'gpt-4o,gpt-4o-mini,o1,o3-mini';
+      } else if (type === 'groq') {
+        document.getElementById('prov-name').value = 'Groq Cloud';
+        document.getElementById('prov-type').value = 'openai';
+        document.getElementById('prov-url').value = 'https://api.groq.com/openai/v1';
+        document.getElementById('prov-key').value = '';
+        document.getElementById('prov-models').value = 'llama-3.3-70b-versatile,deepseek-r1-distill-llama-70b';
+      }
+    }
+
+    async function loadProviders() {
+      try {
+        const res = await apiFetch('/api/providers');
+        const list = await res.json();
+        cachedProviders = list || [];
+        const active = cachedProviders.filter(p => p.is_active).length;
+        const badge = document.getElementById('badge-providers');
+        if (badge) badge.innerText = active;
+
+        const tbody = document.getElementById('providers-table-body');
+        if (!tbody) return;
+
+        if (!cachedProviders.length) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 20px;">No providers configured.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = cachedProviders.map(p => `
+          <tr>
+            <td><strong>${escapeHtml(p.name)}</strong></td>
+            <td><span class="badge ${p.provider_type === 'genspark' ? 'badge-yellow' : (p.provider_type === 'opencode' ? 'badge-blue' : 'badge-green')}">${escapeHtml(p.provider_type.toUpperCase())}</span></td>
+            <td><code style="color: var(--cyan); font-family: var(--font-mono); font-size: 11px;">${escapeHtml(p.base_url)}</code></td>
+            <td><code style="color: var(--text-muted); font-family: var(--font-mono); font-size: 11px;">${escapeHtml(p.masked_key)}</code></td>
+            <td><span class="badge" style="font-size: 10px; background: rgba(255,255,255,0.05);">${escapeHtml(p.models || '*')}</span></td>
+            <td><span class="badge ${p.is_active ? 'badge-green' : 'badge-red'}">${p.is_active ? 'Active' : 'Disabled'}</span></td>
+            <td style="text-align: center;">
+              <button class="btn btn-secondary btn-sm" onclick="toggleProvider('${p.id}', ${!p.is_active})">${p.is_active ? 'Disable' : 'Enable'}</button>
+              ${p.id !== 'opencode' ? `<button class="btn btn-danger btn-sm" onclick="deleteProvider('${p.id}')">Del</button>` : ''}
+            </td>
+          </tr>
+        `).join('');
+      } catch (e) {}
+    }
+
+    async function saveProviderForm(e) {
+      e.preventDefault();
+      const name = document.getElementById('prov-name').value.trim();
+      const provider_type = document.getElementById('prov-type').value;
+      const base_url = document.getElementById('prov-url').value.trim();
+      const api_key = document.getElementById('prov-key').value.trim();
+      const models = document.getElementById('prov-models').value.trim() || '*';
+
+      try {
+        const res = await apiFetch('/api/providers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, provider_type, base_url, api_key, models })
+        });
+        if (res.ok) {
+          showToast('Provider connected and saved!', 'success');
+          document.getElementById('prov-name').value = '';
+          document.getElementById('prov-url').value = '';
+          document.getElementById('prov-key').value = '';
+          document.getElementById('prov-models').value = '*';
+          loadProviders();
+        } else {
+          showToast('Failed to save provider', 'error');
+        }
+      } catch (err) {
+        showToast('Network error', 'error');
+      }
+    }
+
+    async function toggleProvider(id, isActive) {
+      await apiFetch('/api/providers/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, is_active: isActive })
+      });
+      loadProviders();
+    }
+
+    async function deleteProvider(id) {
+      if (!confirm('Remove this provider?')) return;
+      await apiFetch(`/api/providers?id=${id}`, { method: 'DELETE' });
+      showToast('Provider removed', 'warning');
+      loadProviders();
+    }
+
     function escapeHtml(str) {
       return (str || '').toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
@@ -1775,6 +1934,7 @@
       loadStats();
       loadProxies();
       loadAPIKeys();
+      loadProviders();
       loadLogs();
       window.addEventListener('resize', renderCanvasChart);
     });
