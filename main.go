@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,7 +30,7 @@ var dashboardHTML []byte
 
 const (
 	DefaultPort    = "8080"
-	DefaultDBFile  = "router.db"
+	DefaultDBFile  = "zyrouter.db"
 	CooldownPeriod = 45 * time.Second
 	MaxRetries     = 15
 	VercelAPI      = "https://api.vercel.com"
@@ -1454,16 +1456,56 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 	http.Error(w, fmt.Sprintf(`{"error":"All proxy relays failed or rate-limited for model %s: %v"}`, modelName, lastErr), http.StatusBadGateway)
 }
 
+// GetDefaultDBPath resolves the database path matching 9router ori (%APPDATA%\zyrouter or ~/.zyrouter), named zyrouter.db
+func GetDefaultDBPath() string {
+	if explicit := os.Getenv("DB_FILE"); explicit != "" {
+		return explicit
+	}
+
+	appName := "zyrouter"
+	var baseDir string
+
+	if customDataDir := os.Getenv("DATA_DIR"); customDataDir != "" {
+		baseDir = customDataDir
+	} else if runtime.GOOS == "windows" {
+		appData := os.Getenv("APPDATA")
+		if appData != "" {
+			baseDir = filepath.Join(appData, appName)
+		} else {
+			home, _ := os.UserHomeDir()
+			baseDir = filepath.Join(home, "AppData", "Roaming", appName)
+		}
+	} else {
+		home, _ := os.UserHomeDir()
+		baseDir = filepath.Join(home, "."+appName)
+	}
+
+	// Ensure directory exists
+	_ = os.MkdirAll(baseDir, 0755)
+
+	targetDB := filepath.Join(baseDir, "zyrouter.db")
+
+	// Auto-migrate legacy router.db if present in local directory
+	if _, err := os.Stat("router.db"); err == nil {
+		if _, err := os.Stat(targetDB); os.IsNotExist(err) {
+			log.Printf("[Migration] Migrating local router.db to %s", targetDB)
+			data, readErr := os.ReadFile("router.db")
+			if readErr == nil {
+				_ = os.WriteFile(targetDB, data, 0644)
+			}
+		}
+	}
+
+	return targetDB
+}
+
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = DefaultPort
 	}
 
-	dbFile := os.Getenv("DB_FILE")
-	if dbFile == "" {
-		dbFile = DefaultDBFile
-	}
+	dbFile := GetDefaultDBPath()
 
 	db, err := InitDB(dbFile)
 	if err != nil {

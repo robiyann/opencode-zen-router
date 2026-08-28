@@ -9,6 +9,7 @@ opencode-router
 *.db-shm
 *.db-wal
 router.db*
+zyrouter.db*
 
 # OS / Editor files
 .DS_Store
