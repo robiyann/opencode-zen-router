@@ -452,6 +452,7 @@ type RouterServer struct {
 	httpClient       *http.Client
 	providerKeyPools map[string]*UpstreamKeyPool
 	keyPoolMu        sync.RWMutex
+	providerCounter  atomic.Uint64
 	startTime        time.Time
 }
 
@@ -961,27 +962,39 @@ func (s *RouterServer) ResolveProviderAndCleanModel(modelName string) (*Provider
 		prefix := strings.ToLower(strings.TrimSpace(parts[0]))
 		actualModel := strings.TrimSpace(parts[1])
 
+		var prefixMatches []Provider
 		for _, p := range activeProviders {
 			provPrefix := strings.ToLower(strings.TrimSpace(p.ModelPrefix))
 			if provPrefix == "" {
 				provPrefix = strings.ToLower(p.ID)
 			}
-			if prefix == provPrefix || prefix == strings.ToLower(p.ID) || prefix == strings.ToLower(p.Name) {
-				return &p, actualModel
+			if prefix == provPrefix || prefix == strings.ToLower(p.ID) || prefix == strings.ToLower(p.Name) || (prefix == "genspark" && p.ProviderType == "genspark") || (prefix == "opencode" && p.ProviderType == "opencode") {
+				prefixMatches = append(prefixMatches, p)
 			}
+		}
+		if len(prefixMatches) > 0 {
+			idx := int(s.providerCounter.Add(1)-1) % len(prefixMatches)
+			selected := prefixMatches[idx]
+			return &selected, actualModel
 		}
 	}
 
 	// 2. Check explicit model matching list without prefix
+	var modelListMatches []Provider
 	for _, p := range activeProviders {
 		if p.Models != "*" && p.Models != "" && p.Models != "all" {
 			parts := strings.Split(p.Models, ",")
 			for _, part := range parts {
 				if strings.ToLower(strings.TrimSpace(part)) == cleanModelLower {
-					return &p, cleanModel
+					modelListMatches = append(modelListMatches, p)
 				}
 			}
 		}
+	}
+	if len(modelListMatches) > 0 {
+		idx := int(s.providerCounter.Add(1)-1) % len(modelListMatches)
+		selected := modelListMatches[idx]
+		return &selected, cleanModel
 	}
 
 	// 3. Pattern-based routing for Genspark vs OpenCode
@@ -997,18 +1010,30 @@ func (s *RouterServer) ResolveProviderAndCleanModel(modelName string) (*Provider
 		strings.HasPrefix(cleanModelLower, "trinity-")
 
 	if isGensparkModel {
+		var gensparkMatches []Provider
 		for _, p := range activeProviders {
 			if p.ProviderType == "genspark" {
-				return &p, cleanModel
+				gensparkMatches = append(gensparkMatches, p)
 			}
+		}
+		if len(gensparkMatches) > 0 {
+			idx := int(s.providerCounter.Add(1)-1) % len(gensparkMatches)
+			selected := gensparkMatches[idx]
+			return &selected, cleanModel
 		}
 	}
 
 	// 4. Fallback to OpenCode fleet if model is free or default
+	var opencodeMatches []Provider
 	for _, p := range activeProviders {
 		if p.ProviderType == "opencode" {
-			return &p, cleanModel
+			opencodeMatches = append(opencodeMatches, p)
 		}
+	}
+	if len(opencodeMatches) > 0 {
+		idx := int(s.providerCounter.Add(1)-1) % len(opencodeMatches)
+		selected := opencodeMatches[idx]
+		return &selected, cleanModel
 	}
 
 	// 5. Any active wildcard provider
