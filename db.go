@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -533,8 +534,13 @@ func (d *Database) SeedDefaultProviders() {
 	d.db.Exec(`INSERT OR IGNORE INTO providers (id, name, provider_type, base_url, api_key, is_active, models) 
 		VALUES ('opencode', 'OpenCode Zen Fleet', 'opencode', 'https://opencode.ai', 'public', 1, 'mimo-v2.5-free,glm-4-flash-free,deepseek-r1-free,qwen-2.5-coder-32b-free,nemotron-70b-free')`)
 
+	gensparkKey := os.Getenv("GENSPARK_API_KEY")
+	if gensparkKey == "" {
+		gensparkKey = "gsk-eyJjb2dlbl9pZCI6IjE2YjU1NDVjLTE0YjAtNDViYy04ZDVhLTljZDk3NmQ4OGM1OSIsImtleV9pZCI6IjZiMzIyNWM0LWE2NTUtNGNlNi05NjJlLWFkNDg4MTQxOTU1MCIsImN0aW1lIjoxNzg3OTA1NTk0LCJjbGF1ZGVfYmlnX21vZGVsIjpudWxsLCJjbGF1ZGVfbWlkZGxlX21vZGVsIjpudWxsLCJjbGF1ZGVfc21hbGxfbW9kZWwiOm51bGx9fD1aYahD898WbAVcM1pI3--HmiD7w9YIL34pfLrxmXnh"
+	}
+
 	d.db.Exec(`INSERT OR IGNORE INTO providers (id, name, provider_type, base_url, api_key, is_active, models) 
-		VALUES ('genspark', 'Genspark AI Gateway', 'genspark', 'https://www.genspark.ai/api/llm_proxy/v1', 'gsk-eyJjb2dlbl9pZCI6IjE2YjU1NDVjLTE0YjAtNDViYy04ZDVhLTljZDk3NmQ4OGM1OSIsImtleV9pZCI6IjZiMzIyNWM0LWE2NTUtNGNlNi05NjJlLWFkNDg4MTQxOTU1MCIsImN0aW1lIjoxNzg3OTA1NTk0LCJjbGF1ZGVfYmlnX21vZGVsIjpudWxsLCJjbGF1ZGVfbWlkZGxlX21vZGVsIjpudWxsLCJjbGF1ZGVfc21hbGxfbW9kZWwiOm51bGx9fD1aYahD898WbAVcM1pI3--HmiD7w9YIL34pfLrxmXnh', 1, '*')`)
+		VALUES ('genspark', 'Genspark AI Gateway', 'genspark', 'https://www.genspark.ai/api/llm_proxy/v1', ?, 1, '*')`, gensparkKey)
 }
 
 func (d *Database) GetProviders() ([]Provider, error) {
