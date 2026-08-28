@@ -1964,7 +1964,7 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 			continue
 		}
 
-		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode >= 500 {
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusNotFound || resp.StatusCode >= 500 {
 			resp.Body.Close()
 			node.InFlight.Add(-1)
 			cd := node.SetCooldownForStatus(resp.StatusCode)
