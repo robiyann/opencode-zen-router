@@ -2110,8 +2110,17 @@ func (s *RouterServer) HandleChatCompletions(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	log.Printf("[Error] All %d proxy retry attempts failed for model '%s'. Last error: %v", MaxRetries, modelName, lastErr)
-	http.Error(w, fmt.Sprintf(`{"error":"All proxy relays failed or rate-limited for model %s: %v"}`, modelName, lastErr), http.StatusBadGateway)
+	// Emergency Fallback: If all proxies in pool failed or returned 404, route directly to OpenCode Zen API
+	log.Printf("[Direct OpenCode Fallback] Attempting direct route to OpenCode Zen Gateway for model '%s'...", cleanModelName)
+	directOpenCodeProvider := &Provider{
+		ID:           "opencode_direct",
+		Name:         "OpenCode Zen Direct Gateway",
+		BaseURL:      "https://opencode.ai/zen/v1",
+		APIKey:       "public",
+		APIKeysPool:  []string{"public"},
+		ProviderType: "openai",
+	}
+	s.handleDirectProviderCompletion(w, r, directOpenCodeProvider, cleanModelName, bodyBytes, isStream, keyObj)
 }
 
 func (s *RouterServer) handleDirectProviderCompletion(w http.ResponseWriter, r *http.Request, provider *Provider, modelName string, bodyBytes []byte, isStream bool, keyObj *APIKey) {
