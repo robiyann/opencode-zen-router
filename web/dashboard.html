@@ -1929,9 +1929,10 @@
 
         const data = await res.json();
         if (res.ok && data.success) {
-          showToast(`Backup restored! Imported ${data.imported_proxies} proxies & ${data.imported_keys} keys.`, 'success');
+          showToast(`Backup restored! Imported ${data.imported_providers || 0} providers, ${data.imported_proxies || 0} relays & ${data.imported_keys || 0} keys.`, 'success');
           loadProxies();
           loadAPIKeys();
+          loadProviders();
           loadStats();
         } else {
           showToast(data.error || 'Failed to restore backup', 'error');

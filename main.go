@@ -1445,6 +1445,9 @@ export default async function handler(req) {
 // ----------------------------------------------------
 // Export & Backup Database (JSON)
 // ----------------------------------------------------
+// ----------------------------------------------------
+// Export & Backup Database (JSON)
+// ----------------------------------------------------
 func (s *RouterServer) HandleAPIExportBackup(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -1456,12 +1459,14 @@ func (s *RouterServer) HandleAPIExportBackup(w http.ResponseWriter, r *http.Requ
 
 	proxies, _ := s.db.GetAllProxies()
 	keys, _ := s.db.GetAPIKeys()
+	providers, _ := s.db.GetProviders()
 	strategy := s.db.GetSetting("strategy", "round-robin")
 
 	backup := map[string]interface{}{
-		"version":     "1.0.0",
+		"version":     "2.0.0",
 		"exported_at": time.Now().UTC().Format(time.RFC3339),
 		"strategy":    strategy,
+		"providers":   providers,
 		"proxies":     proxies,
 		"api_keys":    keys,
 	}
@@ -1484,14 +1489,16 @@ func (s *RouterServer) HandleAPIImportBackup(w http.ResponseWriter, r *http.Requ
 	}
 
 	var data struct {
-		Strategy string `json:"strategy"`
-		Proxies  []struct {
+		Strategy  string     `json:"strategy"`
+		Providers []Provider `json:"providers"`
+		Proxies   []struct {
 			Name string `json:"name"`
 			URL  string `json:"url"`
 		} `json:"proxies"`
 		APIKeys []struct {
-			Key  string `json:"key"`
-			Name string `json:"name"`
+			Key           string `json:"key"`
+			Name          string `json:"name"`
+			AllowedModels string `json:"allowed_models"`
 		} `json:"api_keys"`
 	}
 
@@ -1500,6 +1507,19 @@ func (s *RouterServer) HandleAPIImportBackup(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// 1. Restore Providers
+	importedProviders := 0
+	for _, p := range data.Providers {
+		p.Name = strings.TrimSpace(p.Name)
+		p.BaseURL = strings.TrimSpace(p.BaseURL)
+		if p.Name != "" && p.BaseURL != "" {
+			if err := s.db.SaveProvider(&p); err == nil {
+				importedProviders++
+			}
+		}
+	}
+
+	// 2. Restore Relays / Proxies
 	importedProxies := 0
 	for _, p := range data.Proxies {
 		urlStr := strings.TrimSpace(p.URL)
@@ -1514,16 +1534,21 @@ func (s *RouterServer) HandleAPIImportBackup(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
+	// 3. Restore Client API Keys
 	importedKeys := 0
 	for _, k := range data.APIKeys {
 		keyStr := strings.TrimSpace(k.Key)
 		name := strings.TrimSpace(k.Name)
+		allowed := strings.TrimSpace(k.AllowedModels)
+		if allowed == "" {
+			allowed = "*"
+		}
 		if keyStr != "" {
 			if name == "" {
 				name = "Imported Key"
 			}
-			_, _ = s.db.db.Exec("INSERT OR IGNORE INTO api_keys (id, key, name, is_active, total_requests, total_tokens) VALUES (?, ?, ?, 1, 0, 0)",
-				fmt.Sprintf("key_%s", genRandomHex(6)), keyStr, name)
+			_, _ = s.db.db.Exec("INSERT OR REPLACE INTO api_keys (id, key, name, allowed_models, is_active, total_requests, total_tokens) VALUES (?, ?, ?, ?, 1, 0, 0)",
+				fmt.Sprintf("key_%s", genRandomHex(6)), keyStr, name, allowed)
 			importedKeys++
 		}
 	}
@@ -1537,10 +1562,11 @@ func (s *RouterServer) HandleAPIImportBackup(w http.ResponseWriter, r *http.Requ
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":          true,
-		"imported_proxies": importedProxies,
-		"imported_keys":    importedKeys,
-		"total_proxies":    s.pool.TotalNodes(),
+		"success":            true,
+		"imported_providers": importedProviders,
+		"imported_proxies":   importedProxies,
+		"imported_keys":      importedKeys,
+		"total_proxies":      s.pool.TotalNodes(),
 	})
 }
 
