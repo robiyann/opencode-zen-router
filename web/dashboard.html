@@ -490,28 +490,64 @@
       <input type="hidden" id="edit-key-id">
       <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px;" id="edit-key-name-display"></div>
 
-      <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px;">
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px;">
         <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; padding: 6px; border-radius: 4px; background: rgba(255,255,255,0.03);">
           <input type="checkbox" id="edit-mod-all" onchange="toggleEditAllModels(this.checked)" checked>
-          <span style="font-weight: 700; color: #c084fc;">🌟 All Models (*)</span>
+          <span style="font-weight: 700; color: #c084fc;">🌟 All Models across All Providers (*)</span>
         </label>
-        <div id="edit-specific-models" style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px;">
-          <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
-            <input type="checkbox" class="edit-model-cb" value="mimo-v2.5-free">
-            <span>mimo-v2.5-free</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
-            <input type="checkbox" class="edit-model-cb" value="glm-4-flash-free">
-            <span>glm-4-flash-free</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
-            <input type="checkbox" class="edit-model-cb" value="deepseek-r1-free">
-            <span>deepseek-r1-free</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
-            <input type="checkbox" class="edit-model-cb" value="qwen-2.5-coder-32b-free">
-            <span>qwen-2.5-coder-32b-free</span>
-          </label>
+        
+        <!-- OpenCode Fleet Models Group -->
+        <div style="border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: rgba(56, 189, 248, 0.02);">
+          <div style="font-size: 10px; font-weight: 700; color: var(--cyan); margin-bottom: 6px; text-transform: uppercase;">🌐 Provider 1: OpenCode Zen (284 Vercel Nodes)</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+              <input type="checkbox" class="edit-model-cb" value="mimo-v2.5-free">
+              <span>mimo-v2.5-free</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+              <input type="checkbox" class="edit-model-cb" value="glm-4-flash-free">
+              <span>glm-4-flash-free</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+              <input type="checkbox" class="edit-model-cb" value="deepseek-r1-free">
+              <span>deepseek-r1-free</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+              <input type="checkbox" class="edit-model-cb" value="qwen-2.5-coder-32b-free">
+              <span>qwen-2.5-coder-32b-free</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Genspark AI Gateway Models Group -->
+        <div style="border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: rgba(234, 179, 8, 0.02);">
+          <div style="font-size: 10px; font-weight: 700; color: var(--amber); margin-bottom: 6px; text-transform: uppercase;">⚡ Provider 2: Genspark AI Gateway (Direct LLM Proxy)</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+              <input type="checkbox" class="edit-model-cb" value="gpt-5">
+              <span>gpt-5</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+              <input type="checkbox" class="edit-model-cb" value="claude-sonnet-4-6">
+              <span>claude-sonnet-4-6</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+              <input type="checkbox" class="edit-model-cb" value="claude-opus-4-6">
+              <span>claude-opus-4-6</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+              <input type="checkbox" class="edit-model-cb" value="deep-seek-v4-pro">
+              <span>deep-seek-v4-pro</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+              <input type="checkbox" class="edit-model-cb" value="kimi-k2p5">
+              <span>kimi-k2p5</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+              <input type="checkbox" class="edit-model-cb" value="grok-4.5">
+              <span>grok-4.5</span>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -712,29 +748,67 @@
             <button type="submit" class="btn btn-sm">✨ Generate Key</button>
           </div>
 
-          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px;">
-            <div style="font-size: 10px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase;">Allowed Models / Modes:</div>
-            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Allowed Models / Modes:</span>
               <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
                 <input type="checkbox" id="create-mod-all" onchange="toggleCreateAllModels(this.checked)" checked>
-                <strong style="color: #c084fc;">All Models (*)</strong>
+                <strong style="color: #c084fc;">🌟 All Models across Providers (*)</strong>
               </label>
-              <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
-                <input type="checkbox" class="create-model-cb" value="mimo-v2.5-free">
-                <span>mimo-v2.5-free</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
-                <input type="checkbox" class="create-model-cb" value="glm-4-flash-free">
-                <span>glm-4-flash-free</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
-                <input type="checkbox" class="create-model-cb" value="deepseek-r1-free">
-                <span>deepseek-r1-free</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
-                <input type="checkbox" class="create-model-cb" value="qwen-2.5-coder-32b-free">
-                <span>qwen-2.5-coder-32b-free</span>
-              </label>
+            </div>
+
+            <!-- Provider 1 Group -->
+            <div style="border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; background: rgba(56, 189, 248, 0.02);">
+              <div style="font-size: 10px; font-weight: 700; color: var(--cyan); margin-bottom: 4px; text-transform: uppercase;">🌐 Provider 1: OpenCode Zen (284 Vercel Edge Relays)</div>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                  <input type="checkbox" class="create-model-cb" value="mimo-v2.5-free">
+                  <span>mimo-v2.5-free</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                  <input type="checkbox" class="create-model-cb" value="glm-4-flash-free">
+                  <span>glm-4-flash-free</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                  <input type="checkbox" class="create-model-cb" value="deepseek-r1-free">
+                  <span>deepseek-r1-free</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                  <input type="checkbox" class="create-model-cb" value="qwen-2.5-coder-32b-free">
+                  <span>qwen-2.5-coder-32b-free</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Provider 2 Group -->
+            <div style="border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; background: rgba(234, 179, 8, 0.02);">
+              <div style="font-size: 10px; font-weight: 700; color: var(--amber); margin-bottom: 4px; text-transform: uppercase;">⚡ Provider 2: Genspark AI Gateway (Direct LLM Proxy)</div>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                  <input type="checkbox" class="create-model-cb" value="gpt-5">
+                  <span>gpt-5</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                  <input type="checkbox" class="create-model-cb" value="claude-sonnet-4-6">
+                  <span>claude-sonnet-4-6</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                  <input type="checkbox" class="create-model-cb" value="claude-opus-4-6">
+                  <span>claude-opus-4-6</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                  <input type="checkbox" class="create-model-cb" value="deep-seek-v4-pro">
+                  <span>deep-seek-v4-pro</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                  <input type="checkbox" class="create-model-cb" value="kimi-k2p5">
+                  <span>kimi-k2p5</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                  <input type="checkbox" class="create-model-cb" value="grok-4.5">
+                  <span>grok-4.5</span>
+                </label>
+              </div>
             </div>
           </div>
         </form>
@@ -915,23 +989,56 @@
     <!-- ==================== TAB 7: CLIENT INTEGRATION ==================== -->
     <div id="tab-docs" class="tab-panel">
       <div class="card">
-        <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px;">Client & IDE Setup Guide</div>
-        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Point your AI coding tools to this local/VPS gateway instance.</p>
+        <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px;">Multi-Provider Client & IDE Setup Guide (9router Architecture)</div>
+        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Point your AI coding tools (Cursor, VS Code, Roo Code, Cline, Python) to this unified router instance. The router automatically dispatches requests to the appropriate provider based on the requested model.</p>
 
-        <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-family: var(--font-mono); font-size: 11px; margin-bottom: 12px;">
-          <div style="margin-bottom: 4px;"><span style="color: var(--text-muted);">Base URL:</span> <strong style="color: var(--cyan);">http://127.0.0.1:8080/v1</strong></div>
-          <div style="margin-bottom: 4px;"><span style="color: var(--text-muted);">Model:</span> <strong style="color: var(--emerald);">nemotron-3-ultra-free</strong></div>
-          <div><span style="color: var(--text-muted);">API Key:</span> [Use your generated sk-zen-... key]</div>
+        <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-family: var(--font-mono); font-size: 11px; margin-bottom: 12px;">
+          <div style="margin-bottom: 6px;"><span style="color: var(--text-muted);">Base URL:</span> <strong style="color: var(--cyan);">http://127.0.0.1:8080/v1</strong></div>
+          <div style="margin-bottom: 6px;"><span style="color: var(--text-muted);">API Key:</span> <span style="color: var(--purple);">sk-zen-YOUR-API-KEY</span></div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; margin-bottom: 14px;">
+          <!-- Provider 1 Card -->
+          <div style="border: 1px solid var(--border); border-radius: 6px; padding: 10px; background: rgba(56, 189, 248, 0.03);">
+            <div style="font-size: 11px; font-weight: 700; color: var(--cyan); margin-bottom: 4px; display: flex; justify-content: space-between;">
+              <span>🌐 PROVIDER 1: OPENCODE ZEN</span>
+              <span class="badge badge-blue">284 Vercel Relays</span>
+            </div>
+            <p style="font-size: 10px; color: var(--text-muted); margin-bottom: 6px;">Load-balanced across 284 active serverless edge nodes.</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+              <code style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-size: 10px;">mimo-v2.5-free</code>
+              <code style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-size: 10px;">glm-4-flash-free</code>
+              <code style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-size: 10px;">deepseek-r1-free</code>
+              <code style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-size: 10px;">qwen-2.5-coder-32b-free</code>
+            </div>
+          </div>
+
+          <!-- Provider 2 Card -->
+          <div style="border: 1px solid var(--border); border-radius: 6px; padding: 10px; background: rgba(234, 179, 8, 0.03);">
+            <div style="font-size: 11px; font-weight: 700; color: var(--amber); margin-bottom: 4px; display: flex; justify-content: space-between;">
+              <span>⚡ PROVIDER 2: GENSPARK AI</span>
+              <span class="badge badge-yellow">Direct Gateway</span>
+            </div>
+            <p style="font-size: 10px; color: var(--text-muted); margin-bottom: 6px;">53+ Premium Frontier models routed directly with zero lag.</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+              <code style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-size: 10px;">gpt-5</code>
+              <code style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-size: 10px;">claude-sonnet-4-6</code>
+              <code style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-size: 10px;">claude-opus-4-6</code>
+              <code style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-size: 10px;">deep-seek-v4-pro</code>
+              <code style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-size: 10px;">kimi-k2p5</code>
+              <code style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-size: 10px;">grok-4.5</code>
+            </div>
+          </div>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-          <span style="font-size: 10px; font-weight: 700; color: var(--text-muted);">CURL TEST COMMAND</span>
+          <span style="font-size: 10px; font-weight: 700; color: var(--text-muted);">CURL TEST (GPT-5 via Genspark)</span>
           <button class="btn btn-secondary btn-sm" onclick="copyText(document.getElementById('curl-code').innerText)">Copy cURL</button>
         </div>
         <pre id="curl-code" style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-family: var(--font-mono); font-size: 11px; overflow-x: auto; color: var(--text-dim);">curl -X POST http://127.0.0.1:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer sk-zen-YOUR-KEY" \
-  -d '{"model":"nemotron-3-ultra-free","messages":[{"role":"user","content":"Hello!"}],"stream":true}'</pre>
+  -d '{"model":"gpt-5","messages":[{"role":"user","content":"Hello!"}],"stream":true}'</pre>
       </div>
     </div>
 
