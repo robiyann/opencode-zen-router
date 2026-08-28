@@ -903,6 +903,72 @@ func (s *RouterServer) HandleAPIToggleProxy(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(map[string]bool{"is_active": req.IsActive})
 }
 
+func (s *RouterServer) HandleAPIPingProxy(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if !s.requireAuth(w, r) {
+		return
+	}
+
+	var req struct {
+		ID  int64  `json:"id"`
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	targetURL := strings.TrimSpace(req.URL)
+	if targetURL == "" {
+		http.Error(w, `{"error":"URL is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	t0 := time.Now()
+	testPayload := []byte(`{"model":"mimo-v2.5-free","messages":[{"role":"user","content":"ping"}],"max_tokens":1}`)
+	httpReq, err := http.NewRequest(http.MethodPost, targetURL, bytes.NewReader(testPayload))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer public")
+	httpReq.Header.Set("x-opencode-client", "desktop")
+
+	client := &http.Client{Timeout: 8 * time.Second}
+	resp, err := client.Do(httpReq)
+	latencyMs := int(time.Since(t0).Milliseconds())
+
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":     502,
+			"error":      err.Error(),
+			"latency_ms": latencyMs,
+			"ok":         false,
+		})
+		return
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+
+	if req.ID > 0 {
+		_ = s.db.UpdateProxyStatus(targetURL, resp.StatusCode, latencyMs, resp.StatusCode == 200)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":     resp.StatusCode,
+		"latency_ms": latencyMs,
+		"ok":         resp.StatusCode == 200,
+	})
+}
+
 func (s *RouterServer) HandleAPIStrategy(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
@@ -1735,6 +1801,7 @@ func main() {
 	// Admin API
 	mux.HandleFunc("/api/proxies", server.HandleAPIProxies)
 	mux.HandleFunc("/api/proxies/toggle", server.HandleAPIToggleProxy)
+	mux.HandleFunc("/api/proxies/ping", server.HandleAPIPingProxy)
 	mux.HandleFunc("/api/strategy", server.HandleAPIStrategy)
 	mux.HandleFunc("/api/logs", server.HandleAPILogs)
 	mux.HandleFunc("/api/deploy-vercel", server.HandleAPIDeployVercel)

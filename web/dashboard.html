@@ -1123,14 +1123,23 @@
       const latEl = document.getElementById(`node-lat-${id}`);
       if (btn) btn.innerText = '...';
 
-      const t0 = Date.now();
       try {
-        await fetch(`${url}/health`, { signal: AbortSignal.timeout(6000) });
-        const latency = Date.now() - t0;
-        if (btn) btn.innerText = `${latency}ms`;
-        if (latEl) {
-          latEl.innerText = latency;
-          latEl.style.color = latency < 300 ? 'var(--emerald)' : 'var(--amber)';
+        const res = await apiFetch('/api/proxies/ping', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, id })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 200) {
+          if (btn) btn.innerText = `${data.latency_ms}ms`;
+          if (latEl) {
+            latEl.innerText = data.latency_ms;
+            latEl.style.color = data.latency_ms < 400 ? 'var(--emerald)' : 'var(--amber)';
+          }
+        } else {
+          const lat = data.latency_ms || '-';
+          if (btn) btn.innerText = `${data.status || 'Err'}`;
+          if (latEl) { latEl.innerText = `${data.status || 'Err'}`; latEl.style.color = 'var(--rose)'; }
         }
       } catch (e) {
         if (btn) btn.innerText = 'Err';
