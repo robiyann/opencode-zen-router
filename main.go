@@ -2182,6 +2182,11 @@ func (s *RouterServer) handleDirectProviderCompletion(w http.ResponseWriter, r *
 	var latencyMs int
 
 	targetURL := strings.TrimRight(provider.BaseURL, "/") + "/chat/completions"
+	if provider.ProviderType == "opencode" || strings.Contains(provider.BaseURL, "opencode.ai") {
+		if !strings.Contains(targetURL, "/zen/v1") {
+			targetURL = "https://opencode.ai/zen/v1/chat/completions"
+		}
+	}
 
 	for attempt := 0; attempt < maxKeyRetries; attempt++ {
 		totalAttempts++

@@ -197,6 +197,8 @@ func InitDB(filepath string) (*Database, error) {
 		log.Printf("[Auth] Default admin password set: admin123 (Change in settings)")
 	}
 
+	db.Exec("UPDATE providers SET base_url = 'https://opencode.ai/zen/v1' WHERE id = 'opencode' AND (base_url = 'https://opencode.ai' OR base_url = 'https://opencode.ai/');")
+
 	// Seed default providers (OpenCode Zen & Genspark AI)
 	database.SeedDefaultProviders()
 
@@ -554,7 +556,7 @@ func (d *Database) SetSetting(key, val string) error {
 // ----------------------------------------------------
 func (d *Database) SeedDefaultProviders() {
 	d.db.Exec(`INSERT OR IGNORE INTO providers (id, name, provider_type, base_url, api_key, api_keys_pool, model_prefix, is_active, models) 
-		VALUES ('opencode', 'OpenCode Zen Fleet', 'opencode', 'https://opencode.ai', 'public', '["public"]', 'opencode', 1, 'mimo-v2.5-free,glm-4-flash-free,deepseek-r1-free,qwen-2.5-coder-32b-free,nemotron-70b-free')`)
+		VALUES ('opencode', 'OpenCode Zen Fleet', 'opencode', 'https://opencode.ai/zen/v1', 'public', '["public"]', 'opencode', 1, 'mimo-v2.5-free,glm-4-flash-free,deepseek-r1-free,qwen-2.5-coder-32b-free,nemotron-70b-free')`)
 
 	gensparkKey := os.Getenv("GENSPARK_API_KEY")
 	gensparkPoolJSON := "[]"
